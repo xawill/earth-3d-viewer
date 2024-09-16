@@ -11,5 +11,11 @@
   ],
   "include": [
     "src/**/*.d.ts"
-  ]
+  ],
+  "typeRoots": [
+	"src/typings",
+	"node_modules/@types"
+  ],
+  "allowJs": true,
+  "checkJs": false
 }

@@ -22,7 +22,13 @@
     "lib": [
       "ES2022",
       "dom"
-    ]
+    ],
+    "typeRoots": [
+      "src/typings",
+      "node_modules/@types"
+    ],
+	"allowJs": true,
+    "checkJs": false
   },
   "angularCompilerOptions": {
     "enableI18nLegacyMessageIdFormat": false,
