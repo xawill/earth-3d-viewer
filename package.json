@@ -20,6 +20,7 @@
     "@angular/router": "^18.2.0",
     "3d-tiles-renderer": "^0.3.38",
     "rxjs": "~7.8.0",
+    "stats.js": "^0.17.0",
     "three": "^0.168.0",
     "three-viewport-gizmo": "^0.1.5",
     "tslib": "^2.3.0",
