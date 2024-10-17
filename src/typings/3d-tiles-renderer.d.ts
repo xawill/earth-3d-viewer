@@ -1,4 +1,5 @@
-declare module '3d-tiles-renderer/src/three/controls/EnvironmentControls.js' {
+import * as NasaTilesRenderer from '3d-tiles-renderer';
+declare module '3d-tiles-renderer' {
 	import { Ellipsoid, TilesRenderer } from '3d-tiles-renderer';
 	import { Camera, Scene, EventDispatcher } from 'three';
 
@@ -26,12 +27,6 @@ declare module '3d-tiles-renderer/src/three/controls/EnvironmentControls.js' {
 		removeEventListener( type: string, listener: ( event: Event ) => void ): void;
 		dispatchEvent( event: { type: string; [attachment: string]: any } ): void;
 	}
-}
-
-declare module '3d-tiles-renderer/src/three/controls/GlobeControls.js' {
-	import { EnvironmentControls } from '3d-tiles-renderer/src/three/controls/EnvironmentControls.js';
-	import { TilesRenderer, Ellipsoid } from '3d-tiles-renderer';
-	import { Camera, Scene } from 'three';
 
 	export class GlobeControls extends EnvironmentControls {
 		reorientOnDrag = true;

@@ -1,22 +1,24 @@
 import { Component, ElementRef, ViewChild } from '@angular/core';
-import { GoogleCloudAuthPlugin, GooglePhotorealisticTilesRenderer, Tile, TilesRenderer, WGS84_ELLIPSOID } from '3d-tiles-renderer';
-import { AmbientLight, AxesHelper, Box3, Box3Helper, BoxGeometry, BoxHelper, DirectionalLight, DoubleSide, Group, LinearToneMapping, MathUtils, Matrix4, Mesh, MeshBasicMaterial, Object3D, PCFSoftShadowMap, PerspectiveCamera, Quaternion, Scene, Sphere, SphereGeometry, Vector3, WebGLRenderer } from 'three';
+import { GlobeControls, GoogleCloudAuthPlugin, Tile, TilesRenderer, WGS84_ELLIPSOID } from '3d-tiles-renderer';
+import { AmbientLight, DirectionalLight, Group, MathUtils, Mesh, PCFSoftShadowMap, PerspectiveCamera, Scene, Vector3, WebGLRenderer } from 'three';
 import Stats from 'stats.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { GlobeControls } from '3d-tiles-renderer/src/three/controls/GlobeControls.js';
 import { TileCompressionPlugin } from '../../plugins/TileCompressionPlugin';
 
+const GOOGLE_MAPS_REALISTIC_3D_TILES_API_KEY = "AIzaSyApSAMZSpLxtGq2eYmxWYabuJ3MfC5wkVA";
+
+const GOOGLE_3D_TILES_TILESET_URL = "https://tile.googleapis.com/v1/3dtiles/root.json";
 const SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL = "https://3d.geo.admin.ch/ch.swisstopo.swissbuildings3d.3d/v1/tileset.json";
 const SWISSTOPO_TLM_3D_TILES_TILESET_URL = "https://3d.geo.admin.ch/ch.swisstopo.swisstlm3d.3d/v1/tileset.json";
 const SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL = "https://3d.geo.admin.ch/ch.swisstopo.vegetation.3d/v1/tileset.json";
 const SWISSTOPO_NAMES_3D_TILES_TILESET_URL = "https://3d.geo.admin.ch/3d-tiles/ch.swisstopo.swissnames3d.3d/20180716/tileset.json"; // TODO: .vctr format not supported (yet). // TODO: Find most recent tileset (if it even exists?)
 
-const GOOGLE_MAPS_REALISTIC_3D_TILES_API_KEY = "AIzaSyApSAMZSpLxtGq2eYmxWYabuJ3MfC5wkVA";
-
 const EARTH_RADIUS_AT_EQUATOR = 6378137; // [m]
 
 const DEFAULT_START_COORDS = [46.516591, 6.629047];
+
+const SWIZERLAND_BOUNDS: Number[] = [0.10401182679403116, 0.7996693586576467, 0.18312399144408265, 0.8343189318329005]; // [west, south, east, north] in EPSG:4979 (rad)
 
 const REUSABLE_VECTOR3 = new Vector3();
 
@@ -41,10 +43,11 @@ export class ViewerComponent {
 	private renderingNeedsUpdate = true;
 	private isMouseDragging = false;
 
-	private googleTiles = new GooglePhotorealisticTilesRenderer();
+	private googleTiles = new TilesRenderer(GOOGLE_3D_TILES_TILESET_URL);
 	private swisstopoBuildingsTiles = new TilesRenderer(SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL);
 	private swisstopoTlmTiles = new TilesRenderer(SWISSTOPO_TLM_3D_TILES_TILESET_URL);
 	private swisstopoVegetationTiles = new TilesRenderer(SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL);
+	private swisstopoNamesTiles = new TilesRenderer(SWISSTOPO_NAMES_3D_TILES_TILESET_URL);
 
 	@ViewChild('canvas') canvas!: ElementRef<HTMLCanvasElement>;
 		
@@ -99,7 +102,7 @@ export class ViewerComponent {
 		this.scene.add( ambLight );
 
 		this.dirLight = new DirectionalLight(0xffffff, 1.25);
-		this.dirLight.position.set( 1, 2, 3 ).multiplyScalar( 40 );
+		this.dirLight.position.set(1, 2, 3).multiplyScalar(40);
 		this.dirLight.castShadow = true;
 		this.dirLight.shadow.bias = - 0.01;
 		this.dirLight.shadow.mapSize.setScalar( 2048 );
@@ -120,8 +123,9 @@ export class ViewerComponent {
 	
 		this.initGoogleTileset(this.googleTiles);
 		this.initSwisstopoTileset(this.swisstopoBuildingsTiles);
-		this.initSwisstopoTileset(this.swisstopoTlmTiles);
-		this.initSwisstopoTileset(this.swisstopoVegetationTiles);
+		//this.initSwisstopoTileset(this.swisstopoTlmTiles);
+		//this.initSwisstopoTileset(this.swisstopoVegetationTiles);
+		//this.initSwisstopoTileset(this.swisstopoNamesTiles);
 
 		WGS84_ELLIPSOID.getCartographicToPosition(DEFAULT_START_COORDS[0] * MathUtils.DEG2RAD, DEFAULT_START_COORDS[1] * MathUtils.DEG2RAD, 10000, REUSABLE_VECTOR3);
 		this.camera.position.set(REUSABLE_VECTOR3.y, REUSABLE_VECTOR3.z, REUSABLE_VECTOR3.x);
@@ -137,9 +141,9 @@ export class ViewerComponent {
 		this.render();
 	}
 
-	private initGoogleTileset(target: GooglePhotorealisticTilesRenderer): void {
+	private initGoogleTileset(target: TilesRenderer): void {
 		target.displayActiveTiles = true;
-		target.registerPlugin( new GoogleCloudAuthPlugin( { apiToken: GOOGLE_MAPS_REALISTIC_3D_TILES_API_KEY } ) );
+		target.registerPlugin(new GoogleCloudAuthPlugin({ apiToken: GOOGLE_MAPS_REALISTIC_3D_TILES_API_KEY }));
 		//target.registerPlugin(new TileCompressionPlugin()); // TODO: Needed?
 
 		const gltfLoader = new GLTFLoader(target.manager);
@@ -154,7 +158,27 @@ export class ViewerComponent {
 		this.controls.setTilesRenderer(target);
 
 		target.addEventListener('load-tile-set', () => this.renderingNeedsUpdate = true);
-		target.addEventListener('load-model', () => this.renderingNeedsUpdate = true);
+		target.addEventListener('load-model', (o: {scene?: Group, tile?: Tile}) => {
+			console.log(o.tile);
+			if (this.isTileInsideSwitzerland(o.tile!.boundingVolume.box!)) {
+				// Make Google Tiles much transparent to allow seeing swisstopo tiles instead.
+				o.scene!.traverse((child) => {
+					const mesh = child as Mesh;
+					if (mesh && mesh.material) {
+						if (Array.isArray(mesh.material)) {
+							for (const m of mesh.material) {
+								m.transparent = true;
+								m.opacity = 0.2;
+							}
+						} else {
+							mesh.material.transparent = true;
+							mesh.material.opacity = 0.2;
+						}
+					}
+				});
+			}
+			this.renderingNeedsUpdate = true
+		});
 	}
 
 	private initSwisstopoTileset(target: TilesRenderer): void {
@@ -169,7 +193,7 @@ export class ViewerComponent {
 
 		this.earth.add(target.group);
 		
-		target.addEventListener('load-tile-set', () => {
+		target.addEventListener('load-tile-set', (_o: {tileSet?: Object}) => {
 			// TODO: Compute proper values to account for slight altitude offset between swisstopo and Google tiles for some reason.
 			target.group.position.x = 34;
 			target.group.position.y = 5;
@@ -194,21 +218,37 @@ export class ViewerComponent {
 			this.controls.update();
 			this.camera.updateMatrixWorld();
 			
-			if (this.googleTiles) {
+			if (this.googleTiles.hasCamera(this.camera)) {
 				this.googleTiles.update();
 			}
-			if (this.swisstopoBuildingsTiles) {
+			if (this.swisstopoBuildingsTiles.hasCamera(this.camera)) {
 				this.swisstopoBuildingsTiles.update();
 			}
-			if (this.swisstopoTlmTiles) {
+			if (this.swisstopoTlmTiles.hasCamera(this.camera)) {
 				this.swisstopoTlmTiles.update();
 			}
-			if (this.swisstopoVegetationTiles) {
+			if (this.swisstopoVegetationTiles.hasCamera(this.camera)) {
 				this.swisstopoVegetationTiles.update();
+			}
+			if (this.swisstopoNamesTiles.hasCamera(this.camera)) {
+				this.swisstopoNamesTiles.update();
 			}
 			
 			this.renderer.render(this.scene, this.camera);
 		}
+	}
+
+	private isTileInsideSwitzerland(tileBoundingVolume: number[]): boolean {
+		const obbCenter = {x: tileBoundingVolume[0], y: tileBoundingVolume[1], z: tileBoundingVolume[2]};
+		const obbX = {x: tileBoundingVolume[3], y: tileBoundingVolume[4], z: tileBoundingVolume[5]};
+		const obbY = {x: tileBoundingVolume[6], y: tileBoundingVolume[7], z: tileBoundingVolume[8]};
+		const obbZ = {x: tileBoundingVolume[9], y: tileBoundingVolume[10], z: tileBoundingVolume[11]};
+		const obbMinCornerCoords = WGS84_ELLIPSOID.getPositionToCartographic(REUSABLE_VECTOR3.set(obbCenter.x, obbCenter.y, obbCenter.z).sub(obbX).sub(obbY).sub(obbZ), {});
+		const obbMaxCornerCoords = WGS84_ELLIPSOID.getPositionToCartographic(REUSABLE_VECTOR3.set(obbCenter.x, obbCenter.y, obbCenter.z).add(obbX).add(obbY).add(obbZ), {});
+		return 	obbMinCornerCoords.lon >= SWIZERLAND_BOUNDS[0] && obbMinCornerCoords.lon <= SWIZERLAND_BOUNDS[2] &&
+				obbMaxCornerCoords.lon >= SWIZERLAND_BOUNDS[0] && obbMaxCornerCoords.lon <= SWIZERLAND_BOUNDS[2] &&
+				obbMinCornerCoords.lat >= SWIZERLAND_BOUNDS[1] && obbMinCornerCoords.lat <= SWIZERLAND_BOUNDS[3] &&
+				obbMaxCornerCoords.lat >= SWIZERLAND_BOUNDS[1] && obbMaxCornerCoords.lat <= SWIZERLAND_BOUNDS[3];
 	}
 
 	private onWindowResize(): void {
