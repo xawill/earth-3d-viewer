@@ -37,6 +37,7 @@ declare module '3d-tiles-renderer' {
 		get ellipsoid(): Ellipsoid;
 
 		setTilesRenderer(tilesRenderer: TilesRenderer): void;
+		getDistanceToCenter(): number;
 
 		update(deltaTime: number = 0): void;
 	}

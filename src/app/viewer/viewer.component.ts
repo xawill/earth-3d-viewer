@@ -1,12 +1,13 @@
 import { Component, ElementRef, ViewChild } from '@angular/core';
-import { GlobeControls, GoogleCloudAuthPlugin, Tile, TilesRenderer, WGS84_ELLIPSOID } from '3d-tiles-renderer';
+import { GlobeControls, GoogleCloudAuthPlugin, Tile, TilesRenderer, WGS84_RADIUS } from '3d-tiles-renderer';
 import { AmbientLight, DirectionalLight, Group, MathUtils, Mesh, PCFSoftShadowMap, PerspectiveCamera, Scene, Vector3, WebGLRenderer } from 'three';
 import Stats from 'stats.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { TileCompressionPlugin } from '../../plugins/TileCompressionPlugin';
-
-const GOOGLE_MAPS_REALISTIC_3D_TILES_API_KEY = "AIzaSyApSAMZSpLxtGq2eYmxWYabuJ3MfC5wkVA";
+import { AddressSearchComponent } from "../address-search/address-search.component";
+import { environment } from '../../environments/environment';
+import gsap from 'gsap';
 
 const GOOGLE_3D_TILES_TILESET_URL = "https://tile.googleapis.com/v1/3dtiles/root.json";
 const SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL = "https://3d.geo.admin.ch/ch.swisstopo.swissbuildings3d.3d/v1/tileset.json";
@@ -14,9 +15,7 @@ const SWISSTOPO_TLM_3D_TILES_TILESET_URL = "https://3d.geo.admin.ch/ch.swisstopo
 const SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL = "https://3d.geo.admin.ch/ch.swisstopo.vegetation.3d/v1/tileset.json";
 const SWISSTOPO_NAMES_3D_TILES_TILESET_URL = "https://3d.geo.admin.ch/3d-tiles/ch.swisstopo.swissnames3d.3d/20180716/tileset.json"; // TODO: .vctr format not supported (yet). // TODO: Find most recent tileset (if it even exists?)
 
-const EARTH_RADIUS_AT_EQUATOR = 6378137; // [m]
-
-const DEFAULT_START_COORDS = [46.516591, 6.629047];
+const DEFAULT_START_COORDS = [6.629047, 46.516591]; // [lon, lat]
 
 const SWIZERLAND_BOUNDS: Number[] = [0.10401182679403116, 0.7996693586576467, 0.18312399144408265, 0.8343189318329005]; // [west, south, east, north] in EPSG:4979 (rad)
 
@@ -25,7 +24,7 @@ const REUSABLE_VECTOR3 = new Vector3();
 @Component({
   selector: 'app-viewer',
   standalone: true,
-  imports: [],
+  imports: [AddressSearchComponent],
   templateUrl: './viewer.component.html',
   styleUrl: './viewer.component.scss'
 })
@@ -42,6 +41,8 @@ export class ViewerComponent {
 
 	private renderingNeedsUpdate = true;
 	private isMouseDragging = false;
+
+	private zoomToCoordsAnimationTl!: gsap.core.Timeline;
 
 	private googleTiles = new TilesRenderer(GOOGLE_3D_TILES_TILESET_URL);
 	private swisstopoBuildingsTiles = new TilesRenderer(SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL);
@@ -66,7 +67,7 @@ export class ViewerComponent {
 		this.renderer.shadowMap.enabled = true;
 		this.renderer.shadowMap.type = PCFSoftShadowMap;
 
-		this.camera = new PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, EARTH_RADIUS_AT_EQUATOR * 2);
+		this.camera = new PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, WGS84_RADIUS * 2);
 
 		this.controls = new GlobeControls(this.scene, this.camera, this.renderer.domElement);
 		this.controls.enableDamping = false;
@@ -75,6 +76,7 @@ export class ViewerComponent {
 		this.controls.minDistance = 40;
 
 		this.controls.addEventListener('start', () => {
+			this.zoomToCoordsAnimationTl.kill();
 			this.renderingNeedsUpdate = true;
 		});
 		this.controls.addEventListener('change', () => {
@@ -122,14 +124,12 @@ export class ViewerComponent {
 		this.scene.add(this.earth);
 	
 		this.initGoogleTileset(this.googleTiles);
-		this.initSwisstopoTileset(this.swisstopoBuildingsTiles);
+		//this.initSwisstopoTileset(this.swisstopoBuildingsTiles);
 		//this.initSwisstopoTileset(this.swisstopoTlmTiles);
 		//this.initSwisstopoTileset(this.swisstopoVegetationTiles);
 		//this.initSwisstopoTileset(this.swisstopoNamesTiles);
 
-		WGS84_ELLIPSOID.getCartographicToPosition(DEFAULT_START_COORDS[0] * MathUtils.DEG2RAD, DEFAULT_START_COORDS[1] * MathUtils.DEG2RAD, 10000, REUSABLE_VECTOR3);
-		this.camera.position.set(REUSABLE_VECTOR3.y, REUSABLE_VECTOR3.z, REUSABLE_VECTOR3.x);
-		this.camera.lookAt(0, 0, 0);
+		this.zoomToCoords({lon: DEFAULT_START_COORDS[0], lat: DEFAULT_START_COORDS[1]}, 5000000);
 	
 		this.stats = new Stats();
 		this.stats.showPanel(0);
@@ -141,9 +141,28 @@ export class ViewerComponent {
 		this.render();
 	}
 
+	zoomToCoords(coords: { lon: number; lat: number; }, height?: number) {
+		const tlCoords = {lon: undefined, lat: undefined, height: undefined};
+		REUSABLE_VECTOR3.set(this.camera.position.z, this.camera.position.x, this.camera.position.y);
+		this.googleTiles.ellipsoid.getPositionToCartographic(REUSABLE_VECTOR3, tlCoords);
+
+		if (!height) {
+			height = 750;
+		}
+
+		this.zoomToCoordsAnimationTl = gsap.timeline();
+		this.zoomToCoordsAnimationTl.to(tlCoords, {lon: coords.lon * MathUtils.DEG2RAD, lat: coords.lat * MathUtils.DEG2RAD, duration: 5, ease: "power4.out", onUpdate: (tlCoords) => {
+			this.googleTiles.ellipsoid.getCartographicToPosition(tlCoords.lat, tlCoords.lon, tlCoords.height, REUSABLE_VECTOR3);
+			this.camera.position.set(REUSABLE_VECTOR3.y, REUSABLE_VECTOR3.z, REUSABLE_VECTOR3.x);
+			this.camera.lookAt(0, 0, 0);
+			this.renderingNeedsUpdate = true;
+		}, onUpdateParams: [tlCoords]});
+		this.zoomToCoordsAnimationTl.to(tlCoords, {height: height, duration: 5, ease: "circ.out"}, 0); // NB: no need of onUpdate, since it is already handled by previous Tween, covering the whole animation.
+	}
+
 	private initGoogleTileset(target: TilesRenderer): void {
 		target.displayActiveTiles = true;
-		target.registerPlugin(new GoogleCloudAuthPlugin({ apiToken: GOOGLE_MAPS_REALISTIC_3D_TILES_API_KEY }));
+		target.registerPlugin(new GoogleCloudAuthPlugin({ apiToken: environment.GOOGLE_MAPS_API_KEY }));
 		//target.registerPlugin(new TileCompressionPlugin()); // TODO: Needed?
 
 		const gltfLoader = new GLTFLoader(target.manager);
@@ -157,9 +176,10 @@ export class ViewerComponent {
 
 		this.controls.setTilesRenderer(target);
 
-		target.addEventListener('load-tile-set', () => this.renderingNeedsUpdate = true);
+		target.addEventListener('load-tile-set', () => {
+			this.renderingNeedsUpdate = true;
+		});
 		target.addEventListener('load-model', (o: {scene?: Group, tile?: Tile}) => {
-			console.log(o.tile);
 			if (this.isTileInsideSwitzerland(o.tile!.boundingVolume.box!)) {
 				// Make Google Tiles much transparent to allow seeing swisstopo tiles instead.
 				o.scene!.traverse((child) => {
@@ -168,16 +188,16 @@ export class ViewerComponent {
 						if (Array.isArray(mesh.material)) {
 							for (const m of mesh.material) {
 								m.transparent = true;
-								m.opacity = 0.2;
+								//m.opacity = 0.2;
 							}
 						} else {
 							mesh.material.transparent = true;
-							mesh.material.opacity = 0.2;
+							//mesh.material.opacity = 0.2;
 						}
 					}
 				});
 			}
-			this.renderingNeedsUpdate = true
+			this.renderingNeedsUpdate = true; // TODO: Debounce
 		});
 	}
 
@@ -201,7 +221,9 @@ export class ViewerComponent {
 
 			this.renderingNeedsUpdate = true;
 		});
-		target.addEventListener('load-model', () => this.renderingNeedsUpdate = true);
+		target.addEventListener('load-model', () => {
+			this.renderingNeedsUpdate = true; // TODO: Debounce
+		});
 	}
 
 	private render(): void {
@@ -243,8 +265,8 @@ export class ViewerComponent {
 		const obbX = {x: tileBoundingVolume[3], y: tileBoundingVolume[4], z: tileBoundingVolume[5]};
 		const obbY = {x: tileBoundingVolume[6], y: tileBoundingVolume[7], z: tileBoundingVolume[8]};
 		const obbZ = {x: tileBoundingVolume[9], y: tileBoundingVolume[10], z: tileBoundingVolume[11]};
-		const obbMinCornerCoords = WGS84_ELLIPSOID.getPositionToCartographic(REUSABLE_VECTOR3.set(obbCenter.x, obbCenter.y, obbCenter.z).sub(obbX).sub(obbY).sub(obbZ), {});
-		const obbMaxCornerCoords = WGS84_ELLIPSOID.getPositionToCartographic(REUSABLE_VECTOR3.set(obbCenter.x, obbCenter.y, obbCenter.z).add(obbX).add(obbY).add(obbZ), {});
+		const obbMinCornerCoords = this.googleTiles.ellipsoid.getPositionToCartographic(REUSABLE_VECTOR3.set(obbCenter.x, obbCenter.y, obbCenter.z).sub(obbX).sub(obbY).sub(obbZ), {});
+		const obbMaxCornerCoords = this.googleTiles.ellipsoid.getPositionToCartographic(REUSABLE_VECTOR3.set(obbCenter.x, obbCenter.y, obbCenter.z).add(obbX).add(obbY).add(obbZ), {});
 		return 	obbMinCornerCoords.lon >= SWIZERLAND_BOUNDS[0] && obbMinCornerCoords.lon <= SWIZERLAND_BOUNDS[2] &&
 				obbMaxCornerCoords.lon >= SWIZERLAND_BOUNDS[0] && obbMaxCornerCoords.lon <= SWIZERLAND_BOUNDS[2] &&
 				obbMinCornerCoords.lat >= SWIZERLAND_BOUNDS[1] && obbMinCornerCoords.lat <= SWIZERLAND_BOUNDS[3] &&

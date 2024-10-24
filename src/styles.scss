@@ -1,4 +1,69 @@
-html, body {
-    margin: 0 !important;
-    padding: 0 !important;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /*@font-face {
+    font-family: 'inter';
+    src: url('assets/fonts/inter.ttf') format('truetype');
+  }
+
+  * {
+    @apply font-inter;
+  }
+
+  .layout {
+    @apply ml-auto mr-auto flex w-layout max-w-7xl flex-grow flex-col;
+  }
+
+  .base-view {
+    @apply flex flex-col;
+  }
+
+  h1,
+  .h1 {
+    @apply mb-8 text-2xl font-bold text-primary md:text-4xl;
+  }
+  h2,
+  .h2 {
+    @apply text-xl font-bold text-primary md:text-3xl;
+  }
+  h3,
+  .h3 {
+    @apply text-lg font-semibold text-primary md:text-2xl;
+  }
+  h4,
+  .h4 {
+    @apply text-base font-bold text-primary md:text-lg;
+  }
+  h5,
+  .h5 {
+    @apply text-base font-semibold text-primary md:text-lg;
+  }
+  body,
+  .p {
+    @apply text-sm md:text-base;
+  }
+
+  td {
+    @apply text-text;
+  }
+
+  button.action {
+    @apply rounded-md border px-6 py-2 font-bold enabled:bg-secondary enabled:text-white disabled:bg-label-2 disabled:text-white;
+  }
+  button.edit {
+    @apply ml-1 font-medium leading-7 text-secondary underline hover:cursor-pointer;
+  }
+
+  input {
+    @apply px-6 py-2 text-text;
+  }
+  label {
+    @apply text-label;
+  }*/
+}
+
+button {
+	line-height: 100%;
 }
