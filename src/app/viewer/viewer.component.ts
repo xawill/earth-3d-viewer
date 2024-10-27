@@ -8,12 +8,13 @@ import { TileCompressionPlugin } from '../../plugins/TileCompressionPlugin';
 import { AddressSearchComponent } from "../address-search/address-search.component";
 import { environment } from '../../environments/environment';
 import gsap from 'gsap';
+import { LayersToggleComponent, SelectedLayers } from '../layers-toggle/layers-toggle.component';
 
 const GOOGLE_3D_TILES_TILESET_URL = "https://tile.googleapis.com/v1/3dtiles/root.json";
 const SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL = "https://3d.geo.admin.ch/ch.swisstopo.swissbuildings3d.3d/v1/tileset.json";
 const SWISSTOPO_TLM_3D_TILES_TILESET_URL = "https://3d.geo.admin.ch/ch.swisstopo.swisstlm3d.3d/v1/tileset.json";
 const SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL = "https://3d.geo.admin.ch/ch.swisstopo.vegetation.3d/v1/tileset.json";
-const SWISSTOPO_NAMES_3D_TILES_TILESET_URL = "https://3d.geo.admin.ch/3d-tiles/ch.swisstopo.swissnames3d.3d/20180716/tileset.json"; // TODO: .vctr format not supported (yet). // TODO: Find most recent tileset (if it even exists?)
+const SWISSTOPO_NAMES_3D_TILES_TILESET_URL = "https://3d.geo.admin.ch/3d-tiles/ch.swisstopo.swissnames3d.3d/20180716/tileset.json";
 
 const DEFAULT_START_COORDS = [6.629047, 46.516591]; // [lon, lat]
 
@@ -24,7 +25,7 @@ const REUSABLE_VECTOR3 = new Vector3();
 @Component({
   selector: 'app-viewer',
   standalone: true,
-  imports: [AddressSearchComponent],
+  imports: [AddressSearchComponent, LayersToggleComponent],
   templateUrl: './viewer.component.html',
   styleUrl: './viewer.component.scss'
 })
@@ -55,6 +56,28 @@ export class ViewerComponent {
 	constructor() {
 		this.dracoLoader = new DRACOLoader();
 		this.dracoLoader.setDecoderPath('libs/draco/gltf/');
+
+		gsap.registerPlugin({ // From https://gsap.com/community/forums/topic/25830-tweening-value-with-large-number-of-decimals/#comment-125391
+			name: "precise",
+			init(target: any, vars: any, tween: any, index: any, targets: any) {
+				let data: any = this,
+					p, value;
+				data.t = target;
+				for (p in vars) {
+					value = vars[p];
+					typeof(value) === "function" && (value = value.call(tween, index, target, targets));
+					data.pt = {n: data.pt, p: p, s: target[p], c: value - target[p]};
+					data._props.push(p);
+				}
+			},
+			render(ratio: any, data: any) {
+				let pt = data.pt;
+				while (pt) {
+					data.t[pt.p] = pt.s + pt.c * ratio;
+					pt = pt.n;
+				}
+			}
+		});
 	}
 
 	ngAfterViewInit() {
@@ -124,10 +147,10 @@ export class ViewerComponent {
 		this.scene.add(this.earth);
 	
 		this.initGoogleTileset(this.googleTiles);
-		//this.initSwisstopoTileset(this.swisstopoBuildingsTiles);
-		//this.initSwisstopoTileset(this.swisstopoTlmTiles);
-		//this.initSwisstopoTileset(this.swisstopoVegetationTiles);
-		//this.initSwisstopoTileset(this.swisstopoNamesTiles);
+		this.initSwisstopoTileset(this.swisstopoBuildingsTiles);
+		this.initSwisstopoTileset(this.swisstopoTlmTiles);
+		this.initSwisstopoTileset(this.swisstopoVegetationTiles);
+		//this.initSwisstopoTileset(this.swisstopoNamesTiles); // TODO: .vctr format not supported (yet). // TODO: Find most recent tileset (if it even exists?)
 
 		this.zoomToCoords({lon: DEFAULT_START_COORDS[0], lat: DEFAULT_START_COORDS[1]}, 5000000);
 	
@@ -151,13 +174,36 @@ export class ViewerComponent {
 		}
 
 		this.zoomToCoordsAnimationTl = gsap.timeline();
-		this.zoomToCoordsAnimationTl.to(tlCoords, {lon: coords.lon * MathUtils.DEG2RAD, lat: coords.lat * MathUtils.DEG2RAD, duration: 5, ease: "power4.out", onUpdate: (tlCoords) => {
+		this.zoomToCoordsAnimationTl.to(tlCoords, {
+			precise: { // Use custom plugin above to avoid floating point errors with small numbers with lots of decimals
+				lon: coords.lon * MathUtils.DEG2RAD,
+				lat: coords.lat * MathUtils.DEG2RAD
+			}, duration: 5, ease: "power4.out", onUpdate: (tlCoords) => {
 			this.googleTiles.ellipsoid.getCartographicToPosition(tlCoords.lat, tlCoords.lon, tlCoords.height, REUSABLE_VECTOR3);
 			this.camera.position.set(REUSABLE_VECTOR3.y, REUSABLE_VECTOR3.z, REUSABLE_VECTOR3.x);
 			this.camera.lookAt(0, 0, 0);
 			this.renderingNeedsUpdate = true;
 		}, onUpdateParams: [tlCoords]});
 		this.zoomToCoordsAnimationTl.to(tlCoords, {height: height, duration: 5, ease: "circ.out"}, 0); // NB: no need of onUpdate, since it is already handled by previous Tween, covering the whole animation.
+	}
+
+	updateLayers($event: SelectedLayers) {
+		if ($event.googleTiles !== undefined) {
+			this.googleTiles.group.visible = $event.googleTiles;
+		}
+		if ($event.swisstopoBuildingsTiles !== undefined) {
+			this.swisstopoBuildingsTiles.group.visible = $event.swisstopoBuildingsTiles;
+		}
+		if ($event.swisstopoTlmTiles !== undefined) {
+			this.swisstopoTlmTiles.group.visible = $event.swisstopoTlmTiles;
+		}
+		if ($event.swisstopoVegetationTiles !== undefined) {
+			this.swisstopoVegetationTiles.group.visible = $event.swisstopoVegetationTiles;
+		}
+		if ($event.swisstopoNamesTiles !== undefined) {
+			this.swisstopoNamesTiles.group.visible = $event.swisstopoNamesTiles;
+		}
+		this.renderingNeedsUpdate = true;
 	}
 
 	private initGoogleTileset(target: TilesRenderer): void {
@@ -234,25 +280,24 @@ export class ViewerComponent {
 		this.stats.update();
 
 		if (this.renderingNeedsUpdate) {
-			console.log("Updating render");
 			this.renderingNeedsUpdate = false;
 
 			this.controls.update();
 			this.camera.updateMatrixWorld();
 			
-			if (this.googleTiles.hasCamera(this.camera)) {
+			if (this.googleTiles.hasCamera(this.camera) && this.googleTiles.group.visible) {
 				this.googleTiles.update();
 			}
-			if (this.swisstopoBuildingsTiles.hasCamera(this.camera)) {
+			if (this.swisstopoBuildingsTiles.hasCamera(this.camera) && this.swisstopoBuildingsTiles.group.visible) {
 				this.swisstopoBuildingsTiles.update();
 			}
-			if (this.swisstopoTlmTiles.hasCamera(this.camera)) {
+			if (this.swisstopoTlmTiles.hasCamera(this.camera) && this.swisstopoTlmTiles.group.visible) {
 				this.swisstopoTlmTiles.update();
 			}
-			if (this.swisstopoVegetationTiles.hasCamera(this.camera)) {
+			if (this.swisstopoVegetationTiles.hasCamera(this.camera) && this.swisstopoVegetationTiles.group.visible) {
 				this.swisstopoVegetationTiles.update();
 			}
-			if (this.swisstopoNamesTiles.hasCamera(this.camera)) {
+			if (this.swisstopoNamesTiles.hasCamera(this.camera) && this.swisstopoNamesTiles.group.visible) {
 				this.swisstopoNamesTiles.update();
 			}
 			
