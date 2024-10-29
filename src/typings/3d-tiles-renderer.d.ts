@@ -21,6 +21,9 @@ declare module '3d-tiles-renderer' {
 
 		update(deltaTime: number = 0);
 
+		get enabled(): boolean;
+		set enabled(enabled: boolean): void;
+
 		// EventDispatcher mixins
 		addEventListener( type: string, listener: ( event: Event ) => void ): void;
 		hasEventListener( type: string, listener: ( event: Event ) => void ): boolean;

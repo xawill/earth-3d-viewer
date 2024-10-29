@@ -18,7 +18,7 @@
     "@angular/platform-browser": "^18.2.0",
     "@angular/platform-browser-dynamic": "^18.2.0",
     "@angular/router": "^18.2.0",
-    "3d-tiles-renderer": "0.3.39",
+    "3d-tiles-renderer": "0.3.40",
     "flowbite": "^2.5.2",
     "gsap": "^3.12.5",
     "rxjs": "~7.8.0",

@@ -17,6 +17,7 @@ const SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL = "https://3d.geo.admin.ch/ch.sw
 const SWISSTOPO_NAMES_3D_TILES_TILESET_URL = "https://3d.geo.admin.ch/3d-tiles/ch.swisstopo.swissnames3d.3d/20180716/tileset.json";
 
 const DEFAULT_START_COORDS = [6.629047, 46.516591]; // [lon, lat]
+const HEIGHT_FULL_GLOBE_VISIBLE = 7000000;
 
 const SWIZERLAND_BOUNDS: Number[] = [0.10401182679403116, 0.7996693586576467, 0.18312399144408265, 0.8343189318329005]; // [west, south, east, north] in EPSG:4979 (rad)
 
@@ -91,6 +92,7 @@ export class ViewerComponent {
 		this.renderer.shadowMap.type = PCFSoftShadowMap;
 
 		this.camera = new PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, WGS84_RADIUS * 2);
+		this.camera.position.set(1, 0, 0); // NB: Arbitrary init position that is not the 0 vector.
 
 		this.controls = new GlobeControls(this.scene, this.camera, this.renderer.domElement);
 		this.controls.enableDamping = false;
@@ -152,7 +154,7 @@ export class ViewerComponent {
 		this.initSwisstopoTileset(this.swisstopoVegetationTiles);
 		//this.initSwisstopoTileset(this.swisstopoNamesTiles); // TODO: .vctr format not supported (yet). // TODO: Find most recent tileset (if it even exists?)
 
-		this.zoomToCoords({lon: DEFAULT_START_COORDS[0], lat: DEFAULT_START_COORDS[1]}, 5000000);
+		this.zoomToCoords({lon: DEFAULT_START_COORDS[0], lat: DEFAULT_START_COORDS[1]}, HEIGHT_FULL_GLOBE_VISIBLE);
 	
 		this.stats = new Stats();
 		this.stats.showPanel(0);
@@ -165,26 +167,52 @@ export class ViewerComponent {
 	}
 
 	zoomToCoords(coords: { lon: number; lat: number; }, height?: number) {
+		// Set init state of `tlCoords` to current position
 		const tlCoords = {lon: undefined, lat: undefined, height: undefined};
-		REUSABLE_VECTOR3.set(this.camera.position.z, this.camera.position.x, this.camera.position.y);
-		this.googleTiles.ellipsoid.getPositionToCartographic(REUSABLE_VECTOR3, tlCoords);
+		const originCameraGlobePosition = REUSABLE_VECTOR3.set(this.camera.position.z, this.camera.position.x, this.camera.position.y);
+		this.googleTiles.ellipsoid.getPositionToCartographic(originCameraGlobePosition, tlCoords);
 
 		if (!height) {
-			height = 750;
+			height = 750; // TODO: Find actual destination surface height.
 		}
 
-		this.zoomToCoordsAnimationTl = gsap.timeline();
+		const pow2Animation = (x: number) => -(x**2)+2*x; // See how function looks like: https://www.wolframalpha.com/input?i=-x%5E2%2B2x
+
+		const destinationPosition = this.googleTiles.ellipsoid.getCartographicToPosition(coords.lat * MathUtils.DEG2RAD, coords.lon * MathUtils.DEG2RAD, height, new Vector3());
+		const originDestAngularDistance = originCameraGlobePosition.normalize().angleTo(destinationPosition.normalize());
+		const distancePercentage = pow2Animation(Math.abs(originDestAngularDistance) / Math.PI);
+
+		const maxClimbAltitude = HEIGHT_FULL_GLOBE_VISIBLE;
+		const climbHeight = Math.max(Math.max(distancePercentage * maxClimbAltitude, height) - tlCoords.height!, 0); // NB: This is climb height and not climb target altitude!
+		const descentHeight = tlCoords.height! + climbHeight - height;
+
+		const maxTotalAnimationDuration = 5; // [sec]
+		const minClimbDescentAnimationDuration = 1.5;
+		const maxClimbDescentAnimationDuration = maxTotalAnimationDuration / 2;
+		const climbAnimationDuration = climbHeight === 0 ? 0 : Math.min(pow2Animation(climbHeight / maxClimbAltitude) * maxClimbDescentAnimationDuration + minClimbDescentAnimationDuration, maxClimbDescentAnimationDuration);
+		const descentAnimationDuration = Math.min(pow2Animation(descentHeight / maxClimbAltitude) * maxClimbDescentAnimationDuration + minClimbDescentAnimationDuration, maxClimbDescentAnimationDuration);
+		const totalAnimationDuration = Math.min(Math.max(distancePercentage * maxTotalAnimationDuration, climbAnimationDuration+descentAnimationDuration), maxTotalAnimationDuration);
+
+		this.zoomToCoordsAnimationTl = gsap.timeline(); // FIX: Animation is a bit jerky
 		this.zoomToCoordsAnimationTl.to(tlCoords, {
 			precise: { // Use custom plugin above to avoid floating point errors with small numbers with lots of decimals
 				lon: coords.lon * MathUtils.DEG2RAD,
 				lat: coords.lat * MathUtils.DEG2RAD
-			}, duration: 5, ease: "power4.out", onUpdate: (tlCoords) => {
+			}, duration: totalAnimationDuration, ease: "power4.inOut", onUpdate: (tlCoords) => {
 			this.googleTiles.ellipsoid.getCartographicToPosition(tlCoords.lat, tlCoords.lon, tlCoords.height, REUSABLE_VECTOR3);
 			this.camera.position.set(REUSABLE_VECTOR3.y, REUSABLE_VECTOR3.z, REUSABLE_VECTOR3.x);
 			this.camera.lookAt(0, 0, 0);
 			this.renderingNeedsUpdate = true;
-		}, onUpdateParams: [tlCoords]});
-		this.zoomToCoordsAnimationTl.to(tlCoords, {height: height, duration: 5, ease: "circ.out"}, 0); // NB: no need of onUpdate, since it is already handled by previous Tween, covering the whole animation.
+		}, onUpdateParams: [tlCoords]}, 0);
+		// NB: no need of onUpdate for other Tweens, since it is already handled by the main Tween, covering the whole animation.
+		this.zoomToCoordsAnimationTl.to(tlCoords, {
+			precise: {
+				height: tlCoords.height! + climbHeight
+			}, duration: climbAnimationDuration, ease: "power3.in"}, 0);
+		this.zoomToCoordsAnimationTl.to(tlCoords, {
+			precise: {
+				height: height
+			}, duration: descentAnimationDuration, ease: "power3.out"}, ">");
 	}
 
 	updateLayers($event: SelectedLayers) {
