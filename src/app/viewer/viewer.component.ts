@@ -190,29 +190,23 @@ export class ViewerComponent {
 		const minClimbDescentAnimationDuration = 1.5;
 		const maxClimbDescentAnimationDuration = maxTotalAnimationDuration / 2;
 		const climbAnimationDuration = climbHeight === 0 ? 0 : Math.min(pow2Animation(climbHeight / maxClimbAltitude) * maxClimbDescentAnimationDuration + minClimbDescentAnimationDuration, maxClimbDescentAnimationDuration);
-		const descentAnimationDuration = Math.min(pow2Animation(descentHeight / maxClimbAltitude) * maxClimbDescentAnimationDuration + minClimbDescentAnimationDuration, maxClimbDescentAnimationDuration);
+		const descentAnimationDuration = descentHeight === 0 ? 0 : Math.min(pow2Animation(descentHeight / maxClimbAltitude) * maxClimbDescentAnimationDuration + minClimbDescentAnimationDuration, maxClimbDescentAnimationDuration);
 		const totalAnimationDuration = Math.min(Math.max(distancePercentage * maxTotalAnimationDuration, climbAnimationDuration+descentAnimationDuration), maxTotalAnimationDuration);
 
-		this.zoomToCoordsAnimationTl = gsap.timeline(); // FIX: Animation is a bit jerky
+		this.zoomToCoordsAnimationTl = gsap.timeline();
 		this.zoomToCoordsAnimationTl.to(tlCoords, {
 			precise: { // Use custom plugin above to avoid floating point errors with small numbers with lots of decimals
 				lon: coords.lon * MathUtils.DEG2RAD,
 				lat: coords.lat * MathUtils.DEG2RAD
-			}, duration: totalAnimationDuration, ease: "power4.inOut", onUpdate: (tlCoords) => {
+			}, duration: totalAnimationDuration, ease: "power4.inOut"}, 0);
+		this.zoomToCoordsAnimationTl.to(tlCoords, {height: tlCoords.height! + climbHeight, duration: climbAnimationDuration, ease: "power3.in"}, 0);
+		this.zoomToCoordsAnimationTl.to(tlCoords, {height: height, duration: descentAnimationDuration, ease: "power3.out"}, ">");
+		this.zoomToCoordsAnimationTl.eventCallback("onUpdate", (tlCoords) => {
 			this.googleTiles.ellipsoid.getCartographicToPosition(tlCoords.lat, tlCoords.lon, tlCoords.height, REUSABLE_VECTOR3);
 			this.camera.position.set(REUSABLE_VECTOR3.y, REUSABLE_VECTOR3.z, REUSABLE_VECTOR3.x);
 			this.camera.lookAt(0, 0, 0);
 			this.renderingNeedsUpdate = true;
-		}, onUpdateParams: [tlCoords]}, 0);
-		// NB: no need of onUpdate for other Tweens, since it is already handled by the main Tween, covering the whole animation.
-		this.zoomToCoordsAnimationTl.to(tlCoords, {
-			precise: {
-				height: tlCoords.height! + climbHeight
-			}, duration: climbAnimationDuration, ease: "power3.in"}, 0);
-		this.zoomToCoordsAnimationTl.to(tlCoords, {
-			precise: {
-				height: height
-			}, duration: descentAnimationDuration, ease: "power3.out"}, ">");
+		}, [tlCoords]);
 	}
 
 	updateLayers($event: SelectedLayers) {
