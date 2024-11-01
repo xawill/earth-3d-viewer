@@ -16,8 +16,13 @@ declare module '3d-tiles-renderer' {
 		adjustHeight = true;
 		enableDamping = false;
 		dampingFactor = 0.15;
-		
-		constructor(scene: Scene = null, camera: Camera = null, domElement: HTMLCanvasElement = null, tilesRenderer: TilesRenderer = null);
+
+		constructor(
+			scene: Scene = null,
+			camera: Camera = null,
+			domElement: HTMLCanvasElement = null,
+			tilesRenderer: TilesRenderer = null
+		);
 
 		update(deltaTime: number = 0);
 
@@ -28,17 +33,22 @@ declare module '3d-tiles-renderer' {
 		set enabled(enabled: boolean): void;
 
 		// EventDispatcher mixins
-		addEventListener( type: string, listener: ( event: Event ) => void ): void;
-		hasEventListener( type: string, listener: ( event: Event ) => void ): boolean;
-		removeEventListener( type: string, listener: ( event: Event ) => void ): void;
-		dispatchEvent( event: { type: string; [attachment: string]: any } ): void;
+		addEventListener(type: string, listener: (event: Event) => void): void;
+		hasEventListener(type: string, listener: (event: Event) => void): boolean;
+		removeEventListener(type: string, listener: (event: Event) => void): void;
+		dispatchEvent(event: { type: string; [attachment: string]: any }): void;
 	}
 
 	export class GlobeControls extends EnvironmentControls {
 		reorientOnDrag = true;
 		scaleZoomOrientationAtEdges = false;
-		
-		constructor(scene: Scene = null, camera: Camera = null, domElement: HTMLCanvasElement = null, tilesRenderer: TilesRenderer = null);
+
+		constructor(
+			scene: Scene = null,
+			camera: Camera = null,
+			domElement: HTMLCanvasElement = null,
+			tilesRenderer: TilesRenderer = null
+		);
 
 		get ellipsoid(): Ellipsoid;
 
