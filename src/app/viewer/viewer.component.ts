@@ -6,11 +6,9 @@ import {
 	Group,
 	Intersection,
 	MathUtils,
-	Mesh,
 	PCFSoftShadowMap,
 	PerspectiveCamera,
 	Raycaster,
-	RGBAFormat,
 	Scene,
 	Vector2,
 	Vector3,
@@ -30,6 +28,7 @@ import {
 	pow2Animation,
 	updateObjectAndChildrenOpacity,
 } from '../utils/graphics-utils';
+import { BatchedTilesPlugin } from '../../plugins/batched/BatchedTilesPlugin';
 
 const GOOGLE_3D_TILES_TILESET_URL = 'https://tile.googleapis.com/v1/3dtiles/root.json';
 const SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL =
@@ -380,6 +379,7 @@ export class ViewerComponent {
 	private initGoogleTileset(target: TilesRenderer): void {
 		target.displayActiveTiles = true;
 		target.registerPlugin(new GoogleCloudAuthPlugin({ apiToken: environment.GOOGLE_MAPS_API_KEY }));
+		target.registerPlugin(new BatchedTilesPlugin({ renderer: this.renderer }));
 		//target.registerPlugin(new TileCompressionPlugin()); // TODO: Needed?
 
 		const gltfLoader = new GLTFLoader(target.manager);
