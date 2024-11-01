@@ -29,6 +29,7 @@ import {
 	updateObjectAndChildrenOpacity,
 } from '../utils/graphics-utils';
 import { BatchedTilesPlugin } from '../../plugins/batched/BatchedTilesPlugin';
+import { EPS_DECIMALS, round } from '../utils/math-utils';
 
 const GOOGLE_3D_TILES_TILESET_URL = 'https://tile.googleapis.com/v1/3dtiles/root.json';
 const SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL =
@@ -228,12 +229,23 @@ export class ViewerComponent {
 				this.destinationPosition
 			)
 		);
-		const originDestAngularDistance = this.camera.position.angleTo(this.destinationPosition);
+		const originDestAngularDistance = round(this.camera.position.angleTo(this.destinationPosition), EPS_DECIMALS);
 		const distancePercentage = pow2Animation(Math.abs(originDestAngularDistance) / Math.PI);
 
 		const maxClimbAltitude = HEIGHT_FULL_GLOBE_VISIBLE;
 		const climbHeight = Math.max(Math.max(distancePercentage * maxClimbAltitude, height) - tlCoords.height!, 0); // NB: This is climb height and not climb target altitude!
-		const descentHeight = tlCoords.height! + climbHeight - height;
+		const descentHeight = round(tlCoords.height! + climbHeight - height, EPS_DECIMALS);
+
+		// Don't move if we are already almost at destination
+		const originDestToleranceRadius = 250; // [m]
+		const originDestLinearDistance =
+			2 *
+			this.googleTiles.ellipsoid.calculateEffectiveRadius(coords.lat) *
+			Math.tan(originDestAngularDistance / 2); // [m]
+		const heightDiffTolerance = 2000; // [m]
+		if (originDestLinearDistance < originDestToleranceRadius && descentHeight < heightDiffTolerance) {
+			return;
+		}
 
 		const maxTotalAnimationDuration = 5; // [sec]
 		const minClimbDescentAnimationDuration = 1.5;

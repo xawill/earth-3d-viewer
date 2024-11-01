@@ -57,4 +57,8 @@ declare module '3d-tiles-renderer' {
 
 		update(deltaTime: number = 0): void;
 	}
+
+	export interface Ellipsoid {
+		calculateEffectiveRadius(latitude: number): number;
+	}
 }
