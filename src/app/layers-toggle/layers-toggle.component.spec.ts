@@ -1,17 +1,17 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { LayersToggleComponent } from './layers-toggle.component';
+import { LayersSettingsComponent } from './layers-toggle.component';
 
 describe('LayersToggleComponent', () => {
-	let component: LayersToggleComponent;
-	let fixture: ComponentFixture<LayersToggleComponent>;
+	let component: LayersSettingsComponent;
+	let fixture: ComponentFixture<LayersSettingsComponent>;
 
 	beforeEach(async () => {
 		await TestBed.configureTestingModule({
-			imports: [LayersToggleComponent],
+			imports: [LayersSettingsComponent],
 		}).compileComponents();
 
-		fixture = TestBed.createComponent(LayersToggleComponent);
+		fixture = TestBed.createComponent(LayersSettingsComponent);
 		component = fixture.componentInstance;
 		fixture.detectChanges();
 	});

@@ -10,6 +10,7 @@ import {
 	PCFSoftShadowMap,
 	PerspectiveCamera,
 	Raycaster,
+	RGBAFormat,
 	Scene,
 	Vector2,
 	Vector3,
@@ -22,8 +23,13 @@ import { TileCompressionPlugin } from '../../plugins/TileCompressionPlugin';
 import { AddressSearchComponent } from '../address-search/address-search.component';
 import { environment } from '../../environments/environment';
 import gsap from 'gsap';
-import { LayersToggleComponent, SelectedLayers } from '../layers-toggle/layers-toggle.component';
-import { threejsPositionToTiles, tilesPositionToThreejs, pow2Animation } from '../utils/graphics-utils';
+import { LayersSettingsComponent, LayersSettings } from '../layers-toggle/layers-toggle.component';
+import {
+	threejsPositionToTiles,
+	tilesPositionToThreejs,
+	pow2Animation,
+	updateObjectAndChildrenOpacity,
+} from '../utils/graphics-utils';
 
 const GOOGLE_3D_TILES_TILESET_URL = 'https://tile.googleapis.com/v1/3dtiles/root.json';
 const SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL =
@@ -46,7 +52,7 @@ const REUSABLE_VECTOR3_2 = new Vector3();
 @Component({
 	selector: 'app-viewer',
 	standalone: true,
-	imports: [AddressSearchComponent, LayersToggleComponent],
+	imports: [AddressSearchComponent, LayersSettingsComponent],
 	templateUrl: './viewer.component.html',
 	styleUrl: './viewer.component.scss',
 })
@@ -78,6 +84,8 @@ export class ViewerComponent {
 	private swisstopoTlmTiles = new TilesRenderer(SWISSTOPO_TLM_3D_TILES_TILESET_URL);
 	private swisstopoVegetationTiles = new TilesRenderer(SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL);
 	private swisstopoNamesTiles = new TilesRenderer(SWISSTOPO_NAMES_3D_TILES_TILESET_URL);
+
+	private googleTilesOpacity = 1;
 
 	@ViewChild('canvas') canvas!: ElementRef<HTMLCanvasElement>;
 
@@ -343,21 +351,28 @@ export class ViewerComponent {
 		this.renderingNeedsUpdate = true;
 	}
 
-	updateLayers($event: SelectedLayers) {
+	updateLayers($event: LayersSettings) {
 		if ($event.googleTiles !== undefined) {
-			this.googleTiles.group.visible = $event.googleTiles;
+			if ($event.googleTiles.enabled !== undefined) {
+				this.googleTiles.group.visible = $event.googleTiles.enabled;
+			}
+			if ($event.googleTiles.opacity !== undefined) {
+				this.googleTilesOpacity = $event.googleTiles!.opacity!;
+				updateObjectAndChildrenOpacity(this.googleTiles.group, this.googleTilesOpacity);
+				this.renderingNeedsUpdate = true;
+			}
 		}
-		if ($event.swisstopoBuildingsTiles !== undefined) {
-			this.swisstopoBuildingsTiles.group.visible = $event.swisstopoBuildingsTiles;
+		if ($event.swisstopoBuildingsTiles !== undefined && $event.swisstopoBuildingsTiles.enabled !== undefined) {
+			this.swisstopoBuildingsTiles.group.visible = $event.swisstopoBuildingsTiles.enabled;
 		}
-		if ($event.swisstopoTlmTiles !== undefined) {
-			this.swisstopoTlmTiles.group.visible = $event.swisstopoTlmTiles;
+		if ($event.swisstopoTlmTiles !== undefined && $event.swisstopoTlmTiles.enabled !== undefined) {
+			this.swisstopoTlmTiles.group.visible = $event.swisstopoTlmTiles.enabled;
 		}
-		if ($event.swisstopoVegetationTiles !== undefined) {
-			this.swisstopoVegetationTiles.group.visible = $event.swisstopoVegetationTiles;
+		if ($event.swisstopoVegetationTiles !== undefined && $event.swisstopoVegetationTiles.enabled !== undefined) {
+			this.swisstopoVegetationTiles.group.visible = $event.swisstopoVegetationTiles.enabled;
 		}
-		if ($event.swisstopoNamesTiles !== undefined) {
-			this.swisstopoNamesTiles.group.visible = $event.swisstopoNamesTiles;
+		if ($event.swisstopoNamesTiles !== undefined && $event.swisstopoNamesTiles.enabled !== undefined) {
+			this.swisstopoNamesTiles.group.visible = $event.swisstopoNamesTiles.enabled;
 		}
 		this.renderingNeedsUpdate = true;
 	}
@@ -382,24 +397,12 @@ export class ViewerComponent {
 			this.renderingNeedsUpdate = true;
 		});
 		target.addEventListener('load-model', (o: { scene?: Group; tile?: Tile }) => {
-			if (this.isTileInsideSwitzerland(o.tile!.boundingVolume.box!)) {
-				// Make Google Tiles much transparent to allow seeing swisstopo tiles instead.
-				o.scene!.traverse(child => {
-					const mesh = child as Mesh;
-					if (mesh && mesh.material) {
-						if (Array.isArray(mesh.material)) {
-							for (const m of mesh.material) {
-								m.transparent = true;
-								//m.opacity = 0.2;
-							}
-						} else {
-							mesh.material.transparent = true;
-							//mesh.material.opacity = 0.2;
-						}
-					}
-				});
-			}
+			updateObjectAndChildrenOpacity(o.scene!, this.googleTilesOpacity);
 			this.renderingNeedsUpdate = true; // TODO: Debounce
+		});
+		target.addEventListener('tile-visibility-change', (o: { scene?: Group; tile?: Tile }) => {
+			updateObjectAndChildrenOpacity(o.scene!, this.googleTilesOpacity);
+			this.renderingNeedsUpdate = true;
 		});
 	}
 

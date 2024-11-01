@@ -3,17 +3,18 @@ import { FormGroup, FormControl, ReactiveFormsModule } from '@angular/forms';
 import { initFlowbite } from 'flowbite';
 
 @Component({
-	selector: 'layers-toggle',
+	selector: 'layers-settings',
 	standalone: true,
 	imports: [ReactiveFormsModule],
 	templateUrl: './layers-toggle.component.html',
 	styleUrl: './layers-toggle.component.scss',
 })
-export class LayersToggleComponent {
-	@Output() selectedLayers = new EventEmitter<SelectedLayers>();
+export class LayersSettingsComponent {
+	@Output() layersSettings = new EventEmitter<LayersSettings>();
 
-	layersTogglesForm = new FormGroup({
+	layersSettingsForm = new FormGroup({
 		googleTiles: new FormControl(true, { nonNullable: true }),
+		googleTilesOpacity: new FormControl(1, { nonNullable: true }),
 		swisstopoBuildingsTiles: new FormControl(false, { nonNullable: true }),
 		swisstopoTlmTiles: new FormControl(false, { nonNullable: true }),
 		swisstopoVegetationTiles: new FormControl(false, { nonNullable: true }),
@@ -21,19 +22,30 @@ export class LayersToggleComponent {
 	});
 
 	constructor() {
-		this.layersTogglesForm.valueChanges.subscribe(values => {
-			this.selectedLayers.emit({
-				googleTiles: values.googleTiles?.valueOf(),
-				swisstopoBuildingsTiles: values.swisstopoBuildingsTiles?.valueOf(),
-				swisstopoTlmTiles: values.swisstopoTlmTiles?.valueOf(),
-				swisstopoVegetationTiles: values.swisstopoVegetationTiles?.valueOf(),
-				swisstopoNamesTiles: values.swisstopoNamesTiles?.valueOf(),
+		this.layersSettingsForm.valueChanges.subscribe(values => {
+			this.layersSettings.emit({
+				googleTiles: {
+					enabled: values.googleTiles?.valueOf(),
+					opacity: values.googleTilesOpacity?.valueOf(),
+				},
+				swisstopoBuildingsTiles: {
+					enabled: values.swisstopoBuildingsTiles?.valueOf(),
+				},
+				swisstopoTlmTiles: {
+					enabled: values.swisstopoTlmTiles?.valueOf(),
+				},
+				swisstopoVegetationTiles: {
+					enabled: values.swisstopoVegetationTiles?.valueOf(),
+				},
+				swisstopoNamesTiles: {
+					enabled: values.swisstopoNamesTiles?.valueOf(),
+				},
 			});
 		});
 	}
 
 	ngOnInit(): void {
-		this.layersTogglesForm.reset({}, { emitEvent: true });
+		this.layersSettingsForm.reset({}, { emitEvent: true });
 	}
 
 	ngAfterViewInit() {
@@ -41,10 +53,21 @@ export class LayersToggleComponent {
 	}
 }
 
-export interface SelectedLayers {
-	googleTiles?: boolean;
-	swisstopoBuildingsTiles?: boolean;
-	swisstopoTlmTiles?: boolean;
-	swisstopoVegetationTiles?: boolean;
-	swisstopoNamesTiles?: boolean;
+export interface LayersSettings {
+	googleTiles?: {
+		enabled?: boolean;
+		opacity?: number;
+	};
+	swisstopoBuildingsTiles?: {
+		enabled?: boolean;
+	};
+	swisstopoTlmTiles?: {
+		enabled?: boolean;
+	};
+	swisstopoVegetationTiles?: {
+		enabled?: boolean;
+	};
+	swisstopoNamesTiles?: {
+		enabled?: boolean;
+	};
 }
