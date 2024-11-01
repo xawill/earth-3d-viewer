@@ -1,6 +1,6 @@
 import { Component, ElementRef, ViewChild } from '@angular/core';
 import { GlobeControls, GoogleCloudAuthPlugin, Tile, TilesRenderer, WGS84_RADIUS } from '3d-tiles-renderer';
-import { AmbientLight, DirectionalLight, Group, MathUtils, Mesh, PCFSoftShadowMap, PerspectiveCamera, Scene, Vector3, WebGLRenderer } from 'three';
+import { AmbientLight, DirectionalLight, Group, Intersection, MathUtils, Mesh, PCFSoftShadowMap, PerspectiveCamera, Raycaster, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
 import Stats from 'stats.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -9,6 +9,7 @@ import { AddressSearchComponent } from "../address-search/address-search.compone
 import { environment } from '../../environments/environment';
 import gsap from 'gsap';
 import { LayersToggleComponent, SelectedLayers } from '../layers-toggle/layers-toggle.component';
+import { threejsPositionToTiles, tilesPositionToThreejs, pow2Animation } from '../utils/graphics-utils';
 
 const GOOGLE_3D_TILES_TILESET_URL = "https://tile.googleapis.com/v1/3dtiles/root.json";
 const SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL = "https://3d.geo.admin.ch/ch.swisstopo.swissbuildings3d.3d/v1/tileset.json";
@@ -21,7 +22,10 @@ const HEIGHT_FULL_GLOBE_VISIBLE = 7000000;
 
 const SWIZERLAND_BOUNDS: Number[] = [0.10401182679403116, 0.7996693586576467, 0.18312399144408265, 0.8343189318329005]; // [west, south, east, north] in EPSG:4979 (rad)
 
-const REUSABLE_VECTOR3 = new Vector3();
+// NB: Put reference to REUSABLE object to null after done using to minimize risk of reusing a REUSABLE object before it was done being used by the previous user.
+const REUSABLE_VECTOR2 = new Vector2();
+const REUSABLE_VECTOR3_1 = new Vector3();
+const REUSABLE_VECTOR3_2 = new Vector3();
 
 @Component({
   selector: 'app-viewer',
@@ -35,6 +39,7 @@ export class ViewerComponent {
 	private renderer!: WebGLRenderer;
 	private camera!: PerspectiveCamera;
 	private controls!: GlobeControls;
+	private raycaster = new Raycaster();
 	private dirLight!: DirectionalLight;
 	private earth = new Group();
 	private stats!: Stats;
@@ -44,7 +49,13 @@ export class ViewerComponent {
 	private renderingNeedsUpdate = true;
 	private isMouseDragging = false;
 
-	private zoomToCoordsAnimationTl!: gsap.core.Timeline;
+	private zoomToCoordsAnimationTl = gsap.timeline();
+	private destinationPosition = new Vector3();
+	private resetOrbitCameraPosition = new Vector3();
+	private pivotPoint = new Vector3();
+	private cameraUp = new Vector3();
+	private localUp = new Vector3();
+	private localEast = new Vector3();
 
 	private googleTiles = new TilesRenderer(GOOGLE_3D_TILES_TILESET_URL);
 	private swisstopoBuildingsTiles = new TilesRenderer(SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL);
@@ -92,7 +103,6 @@ export class ViewerComponent {
 		this.renderer.shadowMap.type = PCFSoftShadowMap;
 
 		this.camera = new PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, WGS84_RADIUS * 2);
-		this.camera.position.set(1, 0, 0); // NB: Arbitrary init position that is not the 0 vector.
 
 		this.controls = new GlobeControls(this.scene, this.camera, this.renderer.domElement);
 		this.controls.enableDamping = false;
@@ -101,7 +111,9 @@ export class ViewerComponent {
 		this.controls.minDistance = 40;
 
 		this.controls.addEventListener('start', () => {
-			this.zoomToCoordsAnimationTl.kill();
+			if (this.zoomToCoordsAnimationTl.isActive()) {
+				this.zoomToCoordsAnimationTl.kill();
+			}
 			this.renderingNeedsUpdate = true;
 		});
 		this.controls.addEventListener('change', () => {
@@ -144,8 +156,8 @@ export class ViewerComponent {
 	
 		this.scene.add(this.dirLight);
 
-		this.earth.rotateOnWorldAxis(REUSABLE_VECTOR3.set(1, 0, 0), -Math.PI/2);
-		this.earth.rotateOnWorldAxis(REUSABLE_VECTOR3.set(0, 1, 0), -Math.PI/2);
+		this.earth.rotateOnWorldAxis(REUSABLE_VECTOR3_1.set(1, 0, 0), -Math.PI/2);
+		this.earth.rotateOnWorldAxis(REUSABLE_VECTOR3_1.set(0, 1, 0), -Math.PI/2);
 		this.scene.add(this.earth);
 	
 		this.initGoogleTileset(this.googleTiles);
@@ -154,7 +166,8 @@ export class ViewerComponent {
 		this.initSwisstopoTileset(this.swisstopoVegetationTiles);
 		//this.initSwisstopoTileset(this.swisstopoNamesTiles); // TODO: .vctr format not supported (yet). // TODO: Find most recent tileset (if it even exists?)
 
-		this.zoomToCoords({lon: DEFAULT_START_COORDS[0], lat: DEFAULT_START_COORDS[1]}, HEIGHT_FULL_GLOBE_VISIBLE);
+		// Set init camera position
+		this.moveCameraTo({lon: DEFAULT_START_COORDS[0] * MathUtils.DEG2RAD, lat: DEFAULT_START_COORDS[1] * MathUtils.DEG2RAD, height: HEIGHT_FULL_GLOBE_VISIBLE});
 	
 		this.stats = new Stats();
 		this.stats.showPanel(0);
@@ -168,18 +181,15 @@ export class ViewerComponent {
 
 	zoomToCoords(coords: { lon: number; lat: number; }, height?: number) {
 		// Set init state of `tlCoords` to current position
-		const tlCoords = {lon: undefined, lat: undefined, height: undefined};
-		const originCameraGlobePosition = REUSABLE_VECTOR3.set(this.camera.position.z, this.camera.position.x, this.camera.position.y);
-		this.googleTiles.ellipsoid.getPositionToCartographic(originCameraGlobePosition, tlCoords);
+		const tlCoords = {lon: 0, lat: 0, height: 0};
+		this.googleTiles.ellipsoid.getPositionToCartographic(threejsPositionToTiles(REUSABLE_VECTOR3_1.copy(this.camera.position)), tlCoords);
 
 		if (!height) {
 			height = 750; // TODO: Find actual destination surface height.
 		}
 
-		const pow2Animation = (x: number) => -(x**2)+2*x; // See how function looks like: https://www.wolframalpha.com/input?i=-x%5E2%2B2x
-
-		const destinationPosition = this.googleTiles.ellipsoid.getCartographicToPosition(coords.lat * MathUtils.DEG2RAD, coords.lon * MathUtils.DEG2RAD, height, new Vector3());
-		const originDestAngularDistance = originCameraGlobePosition.normalize().angleTo(destinationPosition.normalize());
+		tilesPositionToThreejs(this.googleTiles.ellipsoid.getCartographicToPosition(coords.lat * MathUtils.DEG2RAD, coords.lon * MathUtils.DEG2RAD, height, this.destinationPosition));
+		const originDestAngularDistance = this.camera.position.angleTo(this.destinationPosition);
 		const distancePercentage = pow2Animation(Math.abs(originDestAngularDistance) / Math.PI);
 
 		const maxClimbAltitude = HEIGHT_FULL_GLOBE_VISIBLE;
@@ -193,20 +203,62 @@ export class ViewerComponent {
 		const descentAnimationDuration = descentHeight === 0 ? 0 : Math.min(pow2Animation(descentHeight / maxClimbAltitude) * maxClimbDescentAnimationDuration + minClimbDescentAnimationDuration, maxClimbDescentAnimationDuration);
 		const totalAnimationDuration = Math.min(Math.max(distancePercentage * maxTotalAnimationDuration, climbAnimationDuration+descentAnimationDuration), maxTotalAnimationDuration);
 
+		this.raycaster.setFromCamera(REUSABLE_VECTOR2.set(0, 0), this.camera);
+		const cameraGlobeIntersections: Intersection[] = [];
+		this.googleTiles.group.raycast(this.raycaster, cameraGlobeIntersections);
+		if (cameraGlobeIntersections.length > 0) {
+			// TODO: What if multiple intersections?
+			const globePointCenterScreen = cameraGlobeIntersections[0].point;
+			this.pivotPoint.copy(globePointCenterScreen);
+		} else {
+			this.controls.getPivotPoint(this.pivotPoint);
+		}
+		const pivotRadius = REUSABLE_VECTOR3_1.subVectors(this.camera.position, this.pivotPoint).length();
+		this.resetOrbitCameraPosition.copy(this.pivotPoint).addScaledVector(REUSABLE_VECTOR3_2.copy(this.pivotPoint).normalize(), pivotRadius);
+
+		// Compute local up, local east and camera up vectors
+		this.googleTiles.ellipsoid.getPositionToNormal(this.pivotPoint, this.localUp);
+		this.localEast.set(this.pivotPoint.z, 0, -this.pivotPoint.x).normalize();
+		this.cameraUp.crossVectors(this.localUp, this.localEast);
+
+		const pivotResetTl = () => {
+			const tl = gsap.timeline({ defaults: { duration: 1, ease: "none" } });
+			tl.to(this.camera.position, { x: this.resetOrbitCameraPosition.x, y: this.resetOrbitCameraPosition.y, z: this.resetOrbitCameraPosition.z}, 0);
+			tl.to(this.camera.up, {x: this.cameraUp.x, y: this.cameraUp.y, z: this.cameraUp.z}, 0);
+			tl.eventCallback("onStart", () => {
+				this.controls.getCameraUpDirection(this.camera.up);
+			}).eventCallback("onUpdate", () => {
+				this.camera.lookAt(this.pivotPoint);
+				this.renderingNeedsUpdate = true;
+			}).eventCallback("onComplete", () => {
+				// Update tlCoords
+				this.googleTiles.ellipsoid.getPositionToCartographic(threejsPositionToTiles(REUSABLE_VECTOR3_1.copy(this.camera.position)), tlCoords);
+			});
+			return tl;
+		};
+		const cameraTravelTl = () => {
+			const tl = gsap.timeline();
+			tl.to(tlCoords, {
+				precise: {
+					lon: coords.lon * MathUtils.DEG2RAD,
+					lat: coords.lat * MathUtils.DEG2RAD
+				}, duration: totalAnimationDuration, ease: "power4.inOut"}, 0);
+			tl.to(tlCoords, {height: tlCoords.height! + climbHeight, duration: climbAnimationDuration, ease: "power3.in"}, "<");
+			tl.to(tlCoords, {height: height, duration: descentAnimationDuration, ease: "power3.out"}, ">");
+			tl.eventCallback("onUpdate", () => {
+				this.moveCameraTo(tlCoords);
+			});
+			return tl;
+		};
 		this.zoomToCoordsAnimationTl = gsap.timeline();
-		this.zoomToCoordsAnimationTl.to(tlCoords, {
-			precise: { // Use custom plugin above to avoid floating point errors with small numbers with lots of decimals
-				lon: coords.lon * MathUtils.DEG2RAD,
-				lat: coords.lat * MathUtils.DEG2RAD
-			}, duration: totalAnimationDuration, ease: "power4.inOut"}, 0);
-		this.zoomToCoordsAnimationTl.to(tlCoords, {height: tlCoords.height! + climbHeight, duration: climbAnimationDuration, ease: "power3.in"}, 0);
-		this.zoomToCoordsAnimationTl.to(tlCoords, {height: height, duration: descentAnimationDuration, ease: "power3.out"}, ">");
-		this.zoomToCoordsAnimationTl.eventCallback("onUpdate", (tlCoords) => {
-			this.googleTiles.ellipsoid.getCartographicToPosition(tlCoords.lat, tlCoords.lon, tlCoords.height, REUSABLE_VECTOR3);
-			this.camera.position.set(REUSABLE_VECTOR3.y, REUSABLE_VECTOR3.z, REUSABLE_VECTOR3.x);
-			this.camera.lookAt(0, 0, 0);
-			this.renderingNeedsUpdate = true;
-		}, [tlCoords]);
+		this.zoomToCoordsAnimationTl.add(pivotResetTl());
+		this.zoomToCoordsAnimationTl.add(cameraTravelTl());
+	}
+
+	moveCameraTo(coords: {lon: number, lat: number, height: number}): void {
+		tilesPositionToThreejs(this.googleTiles.ellipsoid.getCartographicToPosition(coords.lat, coords.lon, coords.height, this.camera.position));
+		this.camera.lookAt(0, 0, 0);
+		this.renderingNeedsUpdate = true;
 	}
 
 	updateLayers($event: SelectedLayers) {
@@ -332,8 +384,8 @@ export class ViewerComponent {
 		const obbX = {x: tileBoundingVolume[3], y: tileBoundingVolume[4], z: tileBoundingVolume[5]};
 		const obbY = {x: tileBoundingVolume[6], y: tileBoundingVolume[7], z: tileBoundingVolume[8]};
 		const obbZ = {x: tileBoundingVolume[9], y: tileBoundingVolume[10], z: tileBoundingVolume[11]};
-		const obbMinCornerCoords = this.googleTiles.ellipsoid.getPositionToCartographic(REUSABLE_VECTOR3.set(obbCenter.x, obbCenter.y, obbCenter.z).sub(obbX).sub(obbY).sub(obbZ), {});
-		const obbMaxCornerCoords = this.googleTiles.ellipsoid.getPositionToCartographic(REUSABLE_VECTOR3.set(obbCenter.x, obbCenter.y, obbCenter.z).add(obbX).add(obbY).add(obbZ), {});
+		const obbMinCornerCoords = this.googleTiles.ellipsoid.getPositionToCartographic(REUSABLE_VECTOR3_1.set(obbCenter.x, obbCenter.y, obbCenter.z).sub(obbX).sub(obbY).sub(obbZ), {});
+		const obbMaxCornerCoords = this.googleTiles.ellipsoid.getPositionToCartographic(REUSABLE_VECTOR3_1.set(obbCenter.x, obbCenter.y, obbCenter.z).add(obbX).add(obbY).add(obbZ), {});
 		return 	obbMinCornerCoords.lon >= SWIZERLAND_BOUNDS[0] && obbMinCornerCoords.lon <= SWIZERLAND_BOUNDS[2] &&
 				obbMaxCornerCoords.lon >= SWIZERLAND_BOUNDS[0] && obbMaxCornerCoords.lon <= SWIZERLAND_BOUNDS[2] &&
 				obbMinCornerCoords.lat >= SWIZERLAND_BOUNDS[1] && obbMinCornerCoords.lat <= SWIZERLAND_BOUNDS[3] &&

@@ -1,8 +1,8 @@
+import { Ellipsoid, TilesRenderer } from '3d-tiles-renderer';
+import { Camera, Scene, EventDispatcher, Vector3 } from 'three';
+
 import * as NasaTilesRenderer from '3d-tiles-renderer';
 declare module '3d-tiles-renderer' {
-	import { Ellipsoid, TilesRenderer } from '3d-tiles-renderer';
-	import { Camera, Scene, EventDispatcher } from 'three';
-
 	export class EnvironmentControls extends EventDispatcher {
 		cameraRadius = 5;
 		rotationSpeed = 1;
@@ -20,6 +20,9 @@ declare module '3d-tiles-renderer' {
 		constructor(scene: Scene = null, camera: Camera = null, domElement: HTMLCanvasElement = null, tilesRenderer: TilesRenderer = null);
 
 		update(deltaTime: number = 0);
+
+		getPivotPoint(target: Vector3): Vector3;
+		getCameraUpDirection(target: Vector3): Vector3;
 
 		get enabled(): boolean;
 		set enabled(enabled: boolean): void;
