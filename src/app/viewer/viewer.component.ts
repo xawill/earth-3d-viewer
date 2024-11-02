@@ -30,6 +30,7 @@ import {
 } from '../utils/graphics-utils';
 import { BatchedTilesPlugin } from '../../plugins/batched/BatchedTilesPlugin';
 import { EPS_DECIMALS, round } from '../utils/math-utils';
+import { LatLng } from '../utils/map-utils';
 
 const GOOGLE_3D_TILES_TILESET_URL = 'https://tile.googleapis.com/v1/3dtiles/root.json';
 const SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL =
@@ -88,6 +89,8 @@ export class ViewerComponent {
 	private googleTilesOpacity = 1;
 
 	@ViewChild('canvas') canvas!: ElementRef<HTMLCanvasElement>;
+
+	currentPosition = { lon: 0, lat: 0, height: 0 }; // [rad, rad, m]
 
 	constructor() {
 		this.dracoLoader = new DRACOLoader();
@@ -193,11 +196,10 @@ export class ViewerComponent {
 		//this.initSwisstopoTileset(this.swisstopoNamesTiles); // TODO: .vctr format not supported (yet). // TODO: Find most recent tileset (if it even exists?)
 
 		// Set init camera position
-		this.moveCameraTo({
-			lon: DEFAULT_START_COORDS[0] * MathUtils.DEG2RAD,
-			lat: DEFAULT_START_COORDS[1] * MathUtils.DEG2RAD,
-			height: HEIGHT_FULL_GLOBE_VISIBLE,
-		});
+		this.currentPosition.lon = DEFAULT_START_COORDS[0] * MathUtils.DEG2RAD;
+		this.currentPosition.lat = DEFAULT_START_COORDS[1] * MathUtils.DEG2RAD;
+		this.currentPosition.height = HEIGHT_FULL_GLOBE_VISIBLE;
+		this.moveCameraTo(this.currentPosition);
 
 		this.stats = new Stats();
 		this.stats.showPanel(0);
@@ -209,12 +211,11 @@ export class ViewerComponent {
 		this.render();
 	}
 
-	zoomToCoords(coords: { lon: number; lat: number }, height?: number) {
-		// Set init state of `tlCoords` to current position
-		const tlCoords = { lon: 0, lat: 0, height: 0 };
+	zoomToCoords(coords: google.maps.LatLng, height?: number) {
+		// Update currentPosition in case some user controls interaction moved the position since last address selection
 		this.googleTiles.ellipsoid.getPositionToCartographic(
 			threejsPositionToTiles(REUSABLE_VECTOR3_1.copy(this.camera.position)),
-			tlCoords
+			this.currentPosition
 		);
 
 		if (!height) {
@@ -223,8 +224,8 @@ export class ViewerComponent {
 
 		tilesPositionToThreejs(
 			this.googleTiles.ellipsoid.getCartographicToPosition(
-				coords.lat * MathUtils.DEG2RAD,
-				coords.lon * MathUtils.DEG2RAD,
+				coords.lat() * MathUtils.DEG2RAD,
+				coords.lng() * MathUtils.DEG2RAD,
 				height,
 				this.destinationPosition
 			)
@@ -233,14 +234,17 @@ export class ViewerComponent {
 		const distancePercentage = pow2Animation(Math.abs(originDestAngularDistance) / Math.PI);
 
 		const maxClimbAltitude = HEIGHT_FULL_GLOBE_VISIBLE;
-		const climbHeight = Math.max(Math.max(distancePercentage * maxClimbAltitude, height) - tlCoords.height!, 0); // NB: This is climb height and not climb target altitude!
-		const descentHeight = round(tlCoords.height! + climbHeight - height, EPS_DECIMALS);
+		const climbHeight = Math.max(
+			Math.max(distancePercentage * maxClimbAltitude, height) - this.currentPosition.height!,
+			0
+		); // NB: This is climb height and not climb target altitude!
+		const descentHeight = round(this.currentPosition.height! + climbHeight - height, EPS_DECIMALS);
 
 		// Don't move if we are already almost at destination
 		const originDestToleranceRadius = 250; // [m]
 		const originDestLinearDistance =
 			2 *
-			this.googleTiles.ellipsoid.calculateEffectiveRadius(coords.lat) *
+			this.googleTiles.ellipsoid.calculateEffectiveRadius(coords.lat()) *
 			Math.tan(originDestAngularDistance / 2); // [m]
 		const heightDiffTolerance = 2000; // [m]
 		if (originDestLinearDistance < originDestToleranceRadius && descentHeight < heightDiffTolerance) {
@@ -311,10 +315,10 @@ export class ViewerComponent {
 					this.renderingNeedsUpdate = true;
 				})
 				.eventCallback('onComplete', () => {
-					// Update tlCoords
+					// Update currentPosition
 					this.googleTiles.ellipsoid.getPositionToCartographic(
 						threejsPositionToTiles(REUSABLE_VECTOR3_1.copy(this.camera.position)),
-						tlCoords
+						this.currentPosition
 					);
 				});
 			return tl;
@@ -322,11 +326,11 @@ export class ViewerComponent {
 		const cameraTravelTl = () => {
 			const tl = gsap.timeline();
 			tl.to(
-				tlCoords,
+				this.currentPosition,
 				{
 					precise: {
-						lon: coords.lon * MathUtils.DEG2RAD,
-						lat: coords.lat * MathUtils.DEG2RAD,
+						lon: coords.lng() * MathUtils.DEG2RAD,
+						lat: coords.lat() * MathUtils.DEG2RAD,
 					},
 					duration: totalAnimationDuration,
 					ease: 'power4.inOut',
@@ -334,13 +338,21 @@ export class ViewerComponent {
 				0
 			);
 			tl.to(
-				tlCoords,
-				{ height: tlCoords.height! + climbHeight, duration: climbAnimationDuration, ease: 'power3.in' },
+				this.currentPosition,
+				{
+					height: this.currentPosition.height! + climbHeight,
+					duration: climbAnimationDuration,
+					ease: 'power3.in',
+				},
 				'<'
 			);
-			tl.to(tlCoords, { height: height, duration: descentAnimationDuration, ease: 'power3.out' }, '>');
+			tl.to(
+				this.currentPosition,
+				{ height: height, duration: descentAnimationDuration, ease: 'power3.out' },
+				'>'
+			);
 			tl.eventCallback('onUpdate', () => {
-				this.moveCameraTo(tlCoords);
+				this.moveCameraTo(this.currentPosition);
 			});
 			return tl;
 		};
@@ -388,9 +400,13 @@ export class ViewerComponent {
 		this.renderingNeedsUpdate = true;
 	}
 
+	currentPositionLatLng(): LatLng {
+		return { lat: this.currentPosition.lat * MathUtils.RAD2DEG, lng: this.currentPosition.lon * MathUtils.RAD2DEG };
+	}
+
 	private initGoogleTileset(target: TilesRenderer): void {
 		target.displayActiveTiles = true;
-		target.registerPlugin(new GoogleCloudAuthPlugin({ apiToken: environment.GOOGLE_MAPS_API_KEY }));
+		target.registerPlugin(new GoogleCloudAuthPlugin({ apiToken: environment.GOOGLE_MAPS_3D_TILES_API_KEY }));
 		target.registerPlugin(new BatchedTilesPlugin({ renderer: this.renderer }));
 		//target.registerPlugin(new TileCompressionPlugin()); // TODO: Needed?
 
