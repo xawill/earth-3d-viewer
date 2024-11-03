@@ -1,6 +1,6 @@
 <address-search
 	class="absolute right-6 top-6"
-	[originCoord]="currentPositionLatLng()"
-	(searchedCoords)="zoomToCoords($event)" />
+	[originCoords]="currentPositionLatLng()"
+	(searchedCoords)="zoomTo($event)" />
 <layers-settings class="absolute bottom-6 left-6" (layersSettings)="updateLayers($event)" />
 <canvas #canvas class="absolute -z-10"></canvas>

@@ -1,10 +1,9 @@
-import { Component, EventEmitter, Output, input } from '@angular/core';
+import { Component, EventEmitter, Output, inject, input } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { debounceTime, map, Observable, switchMap } from 'rxjs';
+import { debounceTime, EMPTY, map, Observable, switchMap } from 'rxjs';
 import { AsyncPipe } from '@angular/common';
-import { Loader } from '@googlemaps/js-api-loader';
-import { environment } from '../../environments/environment';
 import { LatLng } from '../utils/map-utils';
+import { GoogleMapsService } from '../services/google-maps.service';
 
 const INPUT_AUTOCOMPLETE_DEBOUNCE_TIME = 500; // [ms]
 
@@ -16,12 +15,11 @@ const INPUT_AUTOCOMPLETE_DEBOUNCE_TIME = 500; // [ms]
 	styleUrl: './address-search.component.scss',
 })
 export class AddressSearchComponent {
-	private googlePlacesService: Promise<google.maps.PlacesLibrary>;
-	private googleGeocoder: Promise<google.maps.Geocoder>;
+	private googleMapsService = inject(GoogleMapsService);
 
-	@Output() searchedCoords = new EventEmitter<google.maps.LatLng>();
+	@Output() searchedCoords = new EventEmitter<{ coords: google.maps.LatLng; elevation: number }>();
 
-	originCoord = input<LatLng>({ lat: 0, lng: 0 });
+	originCoords = input<LatLng>({ lat: 0, lng: 0 });
 
 	addressSearchForm = new FormGroup({
 		address: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
@@ -29,30 +27,14 @@ export class AddressSearchComponent {
 	predictions$: Observable<google.maps.places.AutocompleteSuggestion[] | null>;
 
 	constructor() {
-		const loader = new Loader({
-			apiKey: environment.GOOGLE_MAPS_JAVASCRIPT_API_KEY,
-			version: 'weekly',
-			libraries: ['places', 'geocoding'],
-		});
-		this.googlePlacesService = loader.importLibrary('places');
-		this.googleGeocoder = loader.importLibrary('geocoding').then(lib => new lib.Geocoder());
-
 		this.predictions$ = this.addressSearchForm.valueChanges.pipe(
 			debounceTime(INPUT_AUTOCOMPLETE_DEBOUNCE_TIME),
 			switchMap(values => {
-				return this.googlePlacesService
-					.then(lib => {
-						if (values.address) {
-							// TODO: Use proper session token for accurate billing.
-							return lib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
-								input: values.address,
-								origin: { lng: this.originCoord().lng, lat: this.originCoord().lat },
-							});
-						} else {
-							return null;
-						}
-					})
-					.catch(_error => {});
+				if (values.address) {
+					return this.googleMapsService.findSuggestionsForInput(values.address, this.originCoords());
+				} else {
+					return EMPTY;
+				}
 			}),
 			map(suggestions => (suggestions ? suggestions.suggestions : null))
 		);
@@ -71,12 +53,18 @@ export class AddressSearchComponent {
 
 	search(): void {
 		if (this.addressSearchForm.value.address) {
-			this.googleGeocoder
-				.then(geocoder => geocoder.geocode({ address: this.addressSearchForm.value.address }))
+			this.googleMapsService
+				.findCoordsForAddress(this.addressSearchForm.value.address)
 				.then(response => {
 					if (response.results.length > 0) {
-						this.searchedCoords.emit(response.results[0].geometry.location);
+						const coords = response.results[0].geometry.location;
+						return Promise.all([coords, this.googleMapsService.getElevationFor(coords)]);
+					} else {
+						return Promise.reject();
 					}
+				})
+				.then(([coords, elevation]) => {
+					this.searchedCoords.emit({ coords, elevation });
 					this.addressSearchForm.controls.address.reset();
 				})
 				.catch(_error => {});

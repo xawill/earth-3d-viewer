@@ -40,10 +40,10 @@ const SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL = 'https://3d.geo.admin.ch/ch.sw
 const SWISSTOPO_NAMES_3D_TILES_TILESET_URL =
 	'https://3d.geo.admin.ch/3d-tiles/ch.swisstopo.swissnames3d.3d/20180716/tileset.json';
 
+const SWIZERLAND_BOUNDS: Number[] = [0.10401182679403116, 0.7996693586576467, 0.18312399144408265, 0.8343189318329005]; // [west, south, east, north] in EPSG:4979 (rad)
 const DEFAULT_START_COORDS = [6.629047, 46.516591]; // [lon, lat]
 const HEIGHT_FULL_GLOBE_VISIBLE = 7000000;
-
-const SWIZERLAND_BOUNDS: Number[] = [0.10401182679403116, 0.7996693586576467, 0.18312399144408265, 0.8343189318329005]; // [west, south, east, north] in EPSG:4979 (rad)
+const HEIGHT_ABOVE_TARGET_COORDS_ELEVATION = 1000; // [m]
 
 // NB: Put reference to REUSABLE object to null after done using to minimize risk of reusing a REUSABLE object before it was done being used by the previous user.
 const REUSABLE_VECTOR2 = new Vector2();
@@ -211,21 +211,19 @@ export class ViewerComponent {
 		this.render();
 	}
 
-	zoomToCoords(coords: google.maps.LatLng, height?: number) {
+	async zoomTo(destination: { coords: google.maps.LatLng; elevation: number }) {
 		// Update currentPosition in case some user controls interaction moved the position since last address selection
 		this.googleTiles.ellipsoid.getPositionToCartographic(
 			threejsPositionToTiles(REUSABLE_VECTOR3_1.copy(this.camera.position)),
 			this.currentPosition
 		);
 
-		if (!height) {
-			height = 750; // TODO: Find actual destination surface height.
-		}
+		const height = destination.elevation + HEIGHT_ABOVE_TARGET_COORDS_ELEVATION;
 
 		tilesPositionToThreejs(
 			this.googleTiles.ellipsoid.getCartographicToPosition(
-				coords.lat() * MathUtils.DEG2RAD,
-				coords.lng() * MathUtils.DEG2RAD,
+				destination.coords.lat() * MathUtils.DEG2RAD,
+				destination.coords.lng() * MathUtils.DEG2RAD,
 				height,
 				this.destinationPosition
 			)
@@ -244,7 +242,7 @@ export class ViewerComponent {
 		const originDestToleranceRadius = 250; // [m]
 		const originDestLinearDistance =
 			2 *
-			this.googleTiles.ellipsoid.calculateEffectiveRadius(coords.lat()) *
+			this.googleTiles.ellipsoid.calculateEffectiveRadius(destination.coords.lat()) *
 			Math.tan(originDestAngularDistance / 2); // [m]
 		const heightDiffTolerance = 2000; // [m]
 		if (originDestLinearDistance < originDestToleranceRadius && descentHeight < heightDiffTolerance) {
@@ -329,8 +327,8 @@ export class ViewerComponent {
 				this.currentPosition,
 				{
 					precise: {
-						lon: coords.lng() * MathUtils.DEG2RAD,
-						lat: coords.lat() * MathUtils.DEG2RAD,
+						lon: destination.coords.lng() * MathUtils.DEG2RAD,
+						lat: destination.coords.lat() * MathUtils.DEG2RAD,
 					},
 					duration: totalAnimationDuration,
 					ease: 'power4.inOut',
@@ -447,7 +445,8 @@ export class ViewerComponent {
 		this.earth.add(target.group);
 
 		target.addEventListener('load-tile-set', (_o: { tileSet?: Object }) => {
-			// TODO: Compute proper values to account for slight altitude offset between swisstopo and Google tiles for some reason.
+			// NB: Google Photorealistic 3D Tiles are not "survey-grade", so altitude is imprecise (see https://github.com/NASA-AMMOS/3DTilesRendererJS/issues/748).
+			// We empirically find the approximate offset with swisstopo "survey-grade" 3D tiles to have them more or less aligned.
 			target.group.position.x = 34;
 			target.group.position.y = 5;
 			target.group.position.z = 36;
