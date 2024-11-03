@@ -347,7 +347,7 @@ export class ViewerComponent {
 			tl.to(
 				this.currentPosition,
 				{ height: height, duration: descentAnimationDuration, ease: 'power3.out' },
-				'>'
+				climbAnimationDuration === 0 ? totalAnimationDuration / 2 : '>' // Don't go down too quickly and give time to the user to see the globe rotating in case we are already super zoomed out.
 			);
 			tl.eventCallback('onUpdate', () => {
 				this.moveCameraTo(this.currentPosition);
