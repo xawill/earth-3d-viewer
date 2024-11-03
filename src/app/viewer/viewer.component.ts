@@ -189,11 +189,17 @@ export class ViewerComponent {
 		this.earth.rotateOnWorldAxis(REUSABLE_VECTOR3_1.set(0, 1, 0), -Math.PI / 2);
 		this.scene.add(this.earth);
 
+		this.stats = new Stats();
+		this.stats.showPanel(0);
+		document.body.appendChild(this.stats.dom);
+
 		this.initGoogleTileset(this.googleTiles);
 		this.initSwisstopoTileset(this.swisstopoBuildingsTiles);
 		this.initSwisstopoTileset(this.swisstopoTlmTiles);
 		this.initSwisstopoTileset(this.swisstopoVegetationTiles);
 		//this.initSwisstopoTileset(this.swisstopoNamesTiles); // TODO: .vctr format not supported (yet). // TODO: Find most recent tileset (if it even exists?)
+
+		this.render();
 
 		// Set init camera position
 		this.currentPosition.lon = DEFAULT_START_COORDS[0] * MathUtils.DEG2RAD;
@@ -201,14 +207,8 @@ export class ViewerComponent {
 		this.currentPosition.height = HEIGHT_FULL_GLOBE_VISIBLE;
 		this.moveCameraTo(this.currentPosition);
 
-		this.stats = new Stats();
-		this.stats.showPanel(0);
-		document.body.appendChild(this.stats.dom);
-
 		this.onWindowResize();
 		window.addEventListener('resize', () => this.onWindowResize(), false);
-
-		this.render();
 	}
 
 	async zoomTo(destination: { coords: google.maps.LatLng; elevation: number }) {
@@ -233,10 +233,10 @@ export class ViewerComponent {
 
 		const maxClimbAltitude = HEIGHT_FULL_GLOBE_VISIBLE;
 		const climbHeight = Math.max(
-			Math.max(distancePercentage * maxClimbAltitude, height) - this.currentPosition.height!,
+			Math.max(distancePercentage * maxClimbAltitude, height) - this.currentPosition.height,
 			0
 		); // NB: This is climb height and not climb target altitude!
-		const descentHeight = round(this.currentPosition.height! + climbHeight - height, EPS_DECIMALS);
+		const descentHeight = round(this.currentPosition.height + climbHeight - height, EPS_DECIMALS);
 
 		// Don't move if we are already almost at destination
 		const originDestToleranceRadius = 250; // [m]
@@ -338,7 +338,7 @@ export class ViewerComponent {
 			tl.to(
 				this.currentPosition,
 				{
-					height: this.currentPosition.height! + climbHeight,
+					height: this.currentPosition.height + climbHeight,
 					duration: climbAnimationDuration,
 					ease: 'power3.in',
 				},
@@ -368,6 +368,7 @@ export class ViewerComponent {
 				this.camera.position
 			)
 		);
+		this.controls.getCameraUpDirection(this.camera.up);
 		this.camera.lookAt(0, 0, 0);
 		this.renderingNeedsUpdate = true;
 	}
