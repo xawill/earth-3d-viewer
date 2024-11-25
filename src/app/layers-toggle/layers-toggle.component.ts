@@ -3,11 +3,10 @@ import { FormGroup, FormControl, ReactiveFormsModule } from '@angular/forms';
 import { initFlowbite } from 'flowbite';
 
 @Component({
-	selector: 'layers-settings',
-	standalone: true,
-	imports: [ReactiveFormsModule],
-	templateUrl: './layers-toggle.component.html',
-	styleUrl: './layers-toggle.component.scss',
+    selector: 'layers-settings',
+    imports: [ReactiveFormsModule],
+    templateUrl: './layers-toggle.component.html',
+    styleUrl: './layers-toggle.component.scss'
 })
 export class LayersSettingsComponent {
 	@Output() layersSettings = new EventEmitter<LayersSettings>();

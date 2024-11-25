@@ -8,11 +8,10 @@ import { GoogleMapsService } from '../services/google-maps.service';
 const INPUT_AUTOCOMPLETE_DEBOUNCE_TIME = 500; // [ms]
 
 @Component({
-	selector: 'address-search',
-	standalone: true,
-	imports: [ReactiveFormsModule, AsyncPipe],
-	templateUrl: './address-search.component.html',
-	styleUrl: './address-search.component.scss',
+    selector: 'address-search',
+    imports: [ReactiveFormsModule, AsyncPipe],
+    templateUrl: './address-search.component.html',
+    styleUrl: './address-search.component.scss'
 })
 export class AddressSearchComponent {
 	private googleMapsService = inject(GoogleMapsService);

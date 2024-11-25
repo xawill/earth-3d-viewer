@@ -51,11 +51,10 @@ const REUSABLE_VECTOR3_1 = new Vector3();
 const REUSABLE_VECTOR3_2 = new Vector3();
 
 @Component({
-	selector: 'app-viewer',
-	standalone: true,
-	imports: [AddressSearchComponent, LayersSettingsComponent],
-	templateUrl: './viewer.component.html',
-	styleUrl: './viewer.component.scss',
+    selector: 'app-viewer',
+    imports: [AddressSearchComponent, LayersSettingsComponent],
+    templateUrl: './viewer.component.html',
+    styleUrl: './viewer.component.scss'
 })
 export class ViewerComponent {
 	private scene!: Scene;
