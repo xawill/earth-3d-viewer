@@ -26,7 +26,6 @@
 		"flowbite": "^2.5.2",
 		"gsap": "^3.12.5",
 		"rxjs": "~7.8.0",
-		"stats.js": "^0.17.0",
 		"three": "^0.170.0",
 		"three-viewport-gizmo": "^0.1.5",
 		"tslib": "^2.3.0",

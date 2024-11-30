@@ -14,7 +14,7 @@ import {
 	Vector3,
 	WebGLRenderer,
 } from 'three';
-import Stats from 'stats.js';
+import Stats from 'three/examples/jsm/libs/stats.module.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { TileCompressionPlugin } from '../../plugins/TileCompressionPlugin';
@@ -51,10 +51,10 @@ const REUSABLE_VECTOR3_1 = new Vector3();
 const REUSABLE_VECTOR3_2 = new Vector3();
 
 @Component({
-    selector: 'app-viewer',
-    imports: [AddressSearchComponent, LayersSettingsComponent],
-    templateUrl: './viewer.component.html',
-    styleUrl: './viewer.component.scss'
+	selector: 'app-viewer',
+	imports: [AddressSearchComponent, LayersSettingsComponent],
+	templateUrl: './viewer.component.html',
+	styleUrl: './viewer.component.scss',
 })
 export class ViewerComponent {
 	private scene!: Scene;
