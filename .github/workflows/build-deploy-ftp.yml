@@ -1,0 +1,69 @@
+# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
+
+name: Build and deploy to FTP
+
+on:
+    push:
+        branches: ['main']
+    pull_request:
+        branches: ['main']
+    workflow_dispatch: # Allows to run this workflow manually from the Actions tab
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+    group: 'pages'
+    cancel-in-progress: false
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+
+        strategy:
+            matrix:
+                node-version: [20.14]
+
+        steps:
+            - uses: actions/checkout@v4
+            - name: 'Create env files'
+              run: |
+                  mkdir -p src/environments
+                  touch src/environments/environment.ts
+                  echo export const environment = { >> src/environments/environment.ts
+                  echo GOOGLE_MAPS_3D_TILES_API_KEY: \'${{ secrets.GOOGLE_MAPS_3D_TILES_API_KEY }}\', >> src/environments/environment.ts
+                  echo GOOGLE_MAPS_JAVASCRIPT_API_KEY: \'${{ secrets.GOOGLE_MAPS_JAVASCRIPT_API_KEY }}\', >> src/environments/environment.ts
+                  echo } >> src/environments/environment.ts
+                  cat src/environments/environment.ts
+            - name: Use Node.js ${{ matrix.node-version }}
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ matrix.node-version }}
+                  cache: 'npm'
+            - run: npm cache verify -f
+            - run: npm install --unsafe-perm=true
+            - run: npm run build --if-present
+            - name: Upload Build Artifacts
+              uses: actions/upload-artifact@v4.6.0
+              with:
+                  name: build-artifacts
+                  path: ./dist/swisstopo-3d-viewer/browser/
+    #    - run: npm test
+
+    deploy:
+        runs-on: ubuntu-latest
+        needs: build
+        steps:
+            - name: Download Build Artifacts
+              uses: actions/download-artifact@v4.1.8
+              with:
+                  name: build-artifacts
+                  path: ./dist/swisstopo-3d-viewer/browser/
+            - name: Deploy to FTP Server
+              uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+              with:
+                  server: ${{ secrets.FTP_SERVER }}
+                  username: ${{ secrets.FTP_USERNAME }}
+                  password: ${{ secrets.FTP_PASSWORD }}
+                  local-dir: ./dist/swisstopo-3d-viewer/browser/
+                  server-dir: ./sites/earth-3d-viewer.xavier.willemin.swiss/
