@@ -1,5 +1,6 @@
 import { Component, ElementRef, ViewChild } from '@angular/core';
-import { GlobeControls, GoogleCloudAuthPlugin, Tile, TilesRenderer, WGS84_RADIUS } from '3d-tiles-renderer';
+import { GlobeControls, Tile, TilesRenderer, WGS84_RADIUS } from '3d-tiles-renderer';
+import { GoogleCloudAuthPlugin, BatchedTilesPlugin, TileCompressionPlugin } from '3d-tiles-renderer/plugins';
 import {
 	AmbientLight,
 	DirectionalLight,
@@ -13,11 +14,11 @@ import {
 	Vector2,
 	Vector3,
 	WebGLRenderer,
+	Object3D,
 } from 'three';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { TileCompressionPlugin } from '../../plugins/TileCompressionPlugin';
 import { AddressSearchComponent } from '../address-search/address-search.component';
 import { environment } from '../../environments/environment';
 import gsap from 'gsap';
@@ -28,7 +29,6 @@ import {
 	pow2Animation,
 	updateObjectAndChildrenOpacity,
 } from '../utils/graphics-utils';
-import { BatchedTilesPlugin } from '../../plugins/batched/BatchedTilesPlugin';
 import { EPS_DECIMALS, round } from '../utils/math-utils';
 import { LatLng } from '../utils/map-utils';
 
@@ -40,7 +40,7 @@ const SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL = 'https://3d.geo.admin.ch/ch.sw
 const SWISSTOPO_NAMES_3D_TILES_TILESET_URL =
 	'https://3d.geo.admin.ch/3d-tiles/ch.swisstopo.swissnames3d.3d/20180716/tileset.json';
 
-const SWIZERLAND_BOUNDS: Number[] = [0.10401182679403116, 0.7996693586576467, 0.18312399144408265, 0.8343189318329005]; // [west, south, east, north] in EPSG:4979 (rad)
+const SWIZERLAND_BOUNDS: number[] = [0.10401182679403116, 0.7996693586576467, 0.18312399144408265, 0.8343189318329005]; // [west, south, east, north] in EPSG:4979 (rad)
 const DEFAULT_START_COORDS = [6.629047, 46.516591]; // [lon, lat]
 const HEIGHT_FULL_GLOBE_VISIBLE = 7000000;
 const HEIGHT_ABOVE_TARGET_COORDS_ELEVATION = 1000; // [m]
@@ -405,7 +405,18 @@ export class ViewerComponent {
 	private initGoogleTileset(target: TilesRenderer): void {
 		target.displayActiveTiles = true;
 		target.registerPlugin(new GoogleCloudAuthPlugin({ apiToken: environment.GOOGLE_MAPS_3D_TILES_API_KEY }));
-		target.registerPlugin(new BatchedTilesPlugin({ renderer: this.renderer }));
+		target.registerPlugin(
+			new BatchedTilesPlugin({
+				renderer: this.renderer,
+				instanceCount: 500,
+				vertexCount: 750,
+				indexCount: 2000,
+				expandPercent: 0.25,
+				maxInstanceCount: Infinity,
+				discardOriginalContent: true,
+				material: null,
+			})
+		);
 		//target.registerPlugin(new TileCompressionPlugin()); // TODO: Needed?
 
 		const gltfLoader = new GLTFLoader(target.manager);
@@ -422,13 +433,16 @@ export class ViewerComponent {
 		target.addEventListener('load-tile-set', () => {
 			this.renderingNeedsUpdate = true;
 		});
-		target.addEventListener('load-model', (o: { scene?: Group; tile?: Tile }) => {
-			updateObjectAndChildrenOpacity(o.scene!, this.googleTilesOpacity);
+		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
+			updateObjectAndChildrenOpacity(o.scene, this.googleTilesOpacity);
 			this.renderingNeedsUpdate = true; // TODO: Debounce
 		});
-		target.addEventListener('tile-visibility-change', (o: { scene?: Group; tile?: Tile }) => {
-			updateObjectAndChildrenOpacity(o.scene!, this.googleTilesOpacity);
-			this.renderingNeedsUpdate = true;
+		target.addEventListener('tile-visibility-change', (o: { scene: Object3D; tile: Tile; visible: boolean }) => {
+			if (o.scene) {
+				// NB: Apparently the update of 3d-tiles-renderer after 0.3.41 changed behavior in BatchedTilesPlugin so that the scene object might be null...
+				updateObjectAndChildrenOpacity(o.scene, this.googleTilesOpacity);
+				this.renderingNeedsUpdate = true;
+			}
 		});
 	}
 
