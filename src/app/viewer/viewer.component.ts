@@ -15,6 +15,7 @@ import {
 	Vector3,
 	WebGLRenderer,
 	Object3D,
+	AxesHelper,
 } from 'three';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
@@ -23,14 +24,9 @@ import { AddressSearchComponent } from '../address-search/address-search.compone
 import { environment } from '../../environments/environment';
 import gsap from 'gsap';
 import { LayersSettingsComponent, LayersSettings } from '../layers-toggle/layers-toggle.component';
-import {
-	threejsPositionToTiles,
-	tilesPositionToThreejs,
-	pow2Animation,
-	updateObjectAndChildrenOpacity,
-} from '../utils/graphics-utils';
+import { pow2Animation, updateObjectAndChildrenOpacity } from '../utils/graphics-utils';
 import { EPS_DECIMALS, round } from '../utils/math-utils';
-import { LatLng } from '../utils/map-utils';
+import { getUpDirection, LatLng, threejsPositionToTiles, tilesPositionToThreejs } from '../utils/map-utils';
 
 const GOOGLE_3D_TILES_TILESET_URL = 'https://tile.googleapis.com/v1/3dtiles/root.json';
 const SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL =
@@ -69,14 +65,14 @@ export class ViewerComponent {
 	private dracoLoader!: DRACOLoader;
 
 	private renderingNeedsUpdate = true;
+	private areControlsDragging = false; // Dragging means moving globe with normal left mouse button.
+	private isControlsRotationReset = true; // Meaning that north is up and lookAt Earth center.
 
 	private zoomToCoordsAnimationTl = gsap.timeline();
 	private destinationPosition = new Vector3();
 	private resetOrbitCameraPosition = new Vector3();
 	private pivotPoint = new Vector3();
-	private cameraUp = new Vector3();
-	private localUp = new Vector3();
-	private localEast = new Vector3();
+	private targetCameraUp = new Vector3();
 
 	private googleTiles = new TilesRenderer(GOOGLE_3D_TILES_TILESET_URL);
 	private swisstopoBuildingsTiles = new TilesRenderer(SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL);
@@ -144,10 +140,25 @@ export class ViewerComponent {
 			this.renderingNeedsUpdate = true;
 		});
 		this.controls.addEventListener('change', () => {
+			if (this.areControlsDragging && this.isControlsRotationReset) {
+				// Ensure north stays up during dragging when north is already up, otherwise we have an annoying rotation drift. This is not applied when user rotated the globe.
+				this.camera.lookAt(0, 0, 0);
+			}
 			this.renderingNeedsUpdate = true;
 		});
 		this.controls.addEventListener('end', () => {
 			this.renderingNeedsUpdate = true;
+		});
+
+		this.renderer.domElement.addEventListener('pointerdown', event => {
+			this.areControlsDragging = event.button === 0; // Left mouse button
+			if (event.button === 2) {
+				// Right mouse button
+				this.isControlsRotationReset = false;
+			}
+		});
+		this.renderer.domElement.addEventListener('pointerup', () => {
+			this.areControlsDragging = false;
 		});
 
 		// TODO: Implement proper lighting
@@ -172,6 +183,7 @@ export class ViewerComponent {
 
 		this.earth.rotateOnWorldAxis(REUSABLE_VECTOR3_1.set(1, 0, 0), -Math.PI / 2);
 		this.earth.rotateOnWorldAxis(REUSABLE_VECTOR3_1.set(0, 1, 0), -Math.PI / 2);
+		//this.earth.add(new AxesHelper(50000000));
 		this.scene.add(this.earth);
 
 		this.stats = new Stats();
@@ -273,71 +285,74 @@ export class ViewerComponent {
 			.copy(this.pivotPoint)
 			.addScaledVector(REUSABLE_VECTOR3_2.copy(this.pivotPoint).normalize(), pivotRadius);
 
-		// Compute local up, local east and camera up vectors
-		this.googleTiles.ellipsoid.getPositionToNormal(this.pivotPoint, this.localUp);
-		this.localEast.set(this.pivotPoint.z, 0, -this.pivotPoint.x).normalize();
-		this.cameraUp.crossVectors(this.localUp, this.localEast);
+		getUpDirection(this.googleTiles.ellipsoid, this.pivotPoint, this.targetCameraUp);
 
 		const pivotResetTl = () => {
-			const tl = gsap.timeline({ defaults: { duration: 1, ease: 'none' } });
-			tl.to(
-				this.camera.position,
-				{
-					x: this.resetOrbitCameraPosition.x,
-					y: this.resetOrbitCameraPosition.y,
-					z: this.resetOrbitCameraPosition.z,
-				},
-				0
-			);
-			tl.to(this.camera.up, { x: this.cameraUp.x, y: this.cameraUp.y, z: this.cameraUp.z }, 0);
-			tl.eventCallback('onStart', () => {
-				this.controls.getCameraUpDirection(this.camera.up);
-			})
+			return gsap
+				.timeline({ defaults: { duration: 1, ease: 'none' } })
+				.eventCallback('onStart', () => {
+					// Update camera up vector to reflect current rotation around pivot point
+					this.controls.getCameraUpDirection(this.camera.up);
+				})
+				.to(
+					this.camera.position,
+					{
+						x: this.resetOrbitCameraPosition.x,
+						y: this.resetOrbitCameraPosition.y,
+						z: this.resetOrbitCameraPosition.z,
+					},
+					0
+				)
+				.to(this.camera.up, { x: this.targetCameraUp.x, y: this.targetCameraUp.y, z: this.targetCameraUp.z }, 0)
 				.eventCallback('onUpdate', () => {
 					this.camera.lookAt(this.pivotPoint);
 					this.renderingNeedsUpdate = true;
 				})
 				.eventCallback('onComplete', () => {
+					// Reset camera up vector since it shall stay Object3D.DEFAULT_UP for GlobeControls
+					this.camera.up.copy(Object3D.DEFAULT_UP);
 					// Update currentPosition
 					this.googleTiles.ellipsoid.getPositionToCartographic(
 						threejsPositionToTiles(REUSABLE_VECTOR3_1.copy(this.camera.position)),
 						this.currentPosition
 					);
 				});
-			return tl;
 		};
 		const cameraTravelTl = () => {
-			const tl = gsap.timeline();
-			tl.to(
-				this.currentPosition,
-				{
-					precise: {
-						lon: destination.coords.lng() * MathUtils.DEG2RAD,
-						lat: destination.coords.lat() * MathUtils.DEG2RAD,
+			return gsap
+				.timeline()
+				.to(
+					this.currentPosition,
+					{
+						precise: {
+							lon: destination.coords.lng() * MathUtils.DEG2RAD,
+							lat: destination.coords.lat() * MathUtils.DEG2RAD,
+						},
+						duration: totalAnimationDuration,
+						ease: 'power4.inOut',
 					},
-					duration: totalAnimationDuration,
-					ease: 'power4.inOut',
-				},
-				0
-			);
-			tl.to(
-				this.currentPosition,
-				{
-					height: this.currentPosition.height + climbHeight,
-					duration: climbAnimationDuration,
-					ease: 'power3.in',
-				},
-				'<'
-			);
-			tl.to(
-				this.currentPosition,
-				{ height: height, duration: descentAnimationDuration, ease: 'power3.out' },
-				climbAnimationDuration === 0 ? totalAnimationDuration / 2 : '>' // Don't go down too quickly and give time to the user to see the globe rotating in case we are already super zoomed out.
-			);
-			tl.eventCallback('onUpdate', () => {
-				this.moveCameraTo(this.currentPosition);
-			});
-			return tl;
+					0
+				)
+				.to(
+					this.currentPosition,
+					{
+						height: this.currentPosition.height + climbHeight,
+						duration: climbAnimationDuration,
+						ease: 'power3.in',
+					},
+					'<'
+				)
+				.to(
+					this.currentPosition,
+					{ height: height, duration: descentAnimationDuration, ease: 'power3.out' },
+					climbAnimationDuration === 0 ? totalAnimationDuration / 2 : '>' // Don't go down too quickly and give time to the user to see the globe rotating in case we are already super zoomed out.
+				)
+				.eventCallback('onUpdate', () => {
+					this.moveCameraTo(this.currentPosition);
+				})
+				.eventCallback('onComplete', () => {
+					this.isControlsRotationReset = true;
+				});
 		};
 		this.zoomToCoordsAnimationTl = gsap.timeline();
 		this.zoomToCoordsAnimationTl.add(pivotResetTl());
@@ -353,7 +368,6 @@ export class ViewerComponent {
 				this.camera.position
 			)
 		);
-		this.controls.getCameraUpDirection(this.camera.up);
 		this.camera.lookAt(0, 0, 0);
 		this.renderingNeedsUpdate = true;
 	}
