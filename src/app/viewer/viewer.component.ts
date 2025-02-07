@@ -65,7 +65,8 @@ export class ViewerComponent {
 	private dracoLoader!: DRACOLoader;
 
 	private renderingNeedsUpdate = true;
-	private areControlsDragging = false; // Dragging means moving globe with normal left mouse button.
+	private isMouseDragging = false; // Meaning that mouse is being dragged with either left or right button.
+	private areControlsDragging = false; // Meaning that user is moving globe with normal left mouse button.
 	private isControlsRotationReset = true; // Meaning that north is up and lookAt Earth center.
 
 	private zoomToCoordsAnimationTl = gsap.timeline();
@@ -151,13 +152,21 @@ export class ViewerComponent {
 		});
 
 		this.renderer.domElement.addEventListener('pointerdown', event => {
+			this.isMouseDragging = true;
 			this.areControlsDragging = event.button === 0; // Left mouse button
 			if (event.button === 2) {
 				// Right mouse button
 				this.isControlsRotationReset = false;
 			}
 		});
+		this.renderer.domElement.addEventListener('pointermove', () => {
+			if (this.isMouseDragging) {
+				// Fixes a probable bug that often happens during a drag event: the rendering is not updated and the controls therefore block.
+				this.renderingNeedsUpdate = true;
+			}
+		});
 		this.renderer.domElement.addEventListener('pointerup', () => {
+			this.isMouseDragging = false;
 			this.areControlsDragging = false;
 		});
 
