@@ -69,7 +69,6 @@ export class ViewerComponent {
 	private dracoLoader!: DRACOLoader;
 
 	private renderingNeedsUpdate = true;
-	private isMouseDragging = false;
 
 	private zoomToCoordsAnimationTl = gsap.timeline();
 	private destinationPosition = new Vector3();
@@ -149,19 +148,6 @@ export class ViewerComponent {
 		});
 		this.controls.addEventListener('end', () => {
 			this.renderingNeedsUpdate = true;
-		});
-
-		this.renderer.domElement.addEventListener('pointerdown', () => {
-			this.isMouseDragging = true;
-		});
-		this.renderer.domElement.addEventListener('pointermove', () => {
-			if (this.isMouseDragging) {
-				// Fixes a probable bug that often during a drag event the rendering is not updated and the controls therefore block.
-				this.renderingNeedsUpdate = true;
-			}
-		});
-		this.renderer.domElement.addEventListener('pointerup', () => {
-			this.isMouseDragging = false;
 		});
 
 		// TODO: Implement proper lighting
