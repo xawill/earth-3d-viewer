@@ -1,6 +1,11 @@
 import { Component, ElementRef, ViewChild } from '@angular/core';
 import { GlobeControls, Tile, TilesRenderer, WGS84_RADIUS } from '3d-tiles-renderer';
-import { GoogleCloudAuthPlugin, BatchedTilesPlugin, TileCompressionPlugin } from '3d-tiles-renderer/plugins';
+import {
+	GoogleCloudAuthPlugin,
+	BatchedTilesPlugin,
+	TileCompressionPlugin,
+	DebugTilesPlugin,
+} from '3d-tiles-renderer/plugins';
 import {
 	AmbientLight,
 	DirectionalLight,
@@ -88,6 +93,7 @@ export class ViewerComponent {
 	private swisstopoTlmTiles = new TilesRenderer(SWISSTOPO_TLM_3D_TILES_TILESET_URL);
 	private swisstopoVegetationTiles = new TilesRenderer(SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL);
 	private swisstopoNamesTiles = new TilesRenderer(SWISSTOPO_NAMES_3D_TILES_TILESET_URL);
+	private debugTilesPlugin = new DebugTilesPlugin();
 
 	private googleTilesOpacity = 1;
 
@@ -378,6 +384,7 @@ export class ViewerComponent {
 					this.moveCameraTo(this.currentPosition);
 				})
 				.eventCallback('onComplete', () => {
+					this.debugTilesPlugin.colorMode = 2;
 					this.isControlsRotationReset = true;
 				});
 		};
@@ -433,6 +440,8 @@ export class ViewerComponent {
 
 	private initGoogleTileset(target: TilesRenderer): void {
 		target.displayActiveTiles = true;
+		target.errorTarget = 0;
+
 		target.registerPlugin(new GoogleCloudAuthPlugin({ apiToken: environment.GOOGLE_MAPS_3D_TILES_API_KEY }));
 		target.registerPlugin(
 			new BatchedTilesPlugin({
@@ -446,6 +455,10 @@ export class ViewerComponent {
 				material: null,
 			})
 		);
+		target.registerPlugin(this.debugTilesPlugin);
+		this.debugTilesPlugin.maxDebugError = 100;
+		this.debugTilesPlugin.maxDebugDistance = 100;
+		this.debugTilesPlugin.enabled = false;
 		//target.registerPlugin(new TileCompressionPlugin()); // TODO: Needed?
 
 		const gltfLoader = new GLTFLoader(target.manager);
