@@ -26,7 +26,14 @@ import gsap from 'gsap';
 import { LayersSettingsComponent, LayersSettings } from '../layers-toggle/layers-toggle.component';
 import { pow2Animation, updateObjectAndChildrenOpacity } from '../utils/graphics-utils';
 import { EPS_DECIMALS, round } from '../utils/math-utils';
-import { getUpDirection, LatLng, threejsPositionToTiles, tilesPositionToThreejs } from '../utils/map-utils';
+import {
+	getUpDirection,
+	haversineDistance,
+	LatLng,
+	LatLon,
+	threejsPositionToTiles,
+	tilesPositionToThreejs,
+} from '../utils/map-utils';
 
 const GOOGLE_3D_TILES_TILESET_URL = 'https://tile.googleapis.com/v1/3dtiles/root.json';
 const SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL =
@@ -37,9 +44,10 @@ const SWISSTOPO_NAMES_3D_TILES_TILESET_URL =
 	'https://3d.geo.admin.ch/3d-tiles/ch.swisstopo.swissnames3d.3d/20180716/tileset.json';
 
 const SWIZERLAND_BOUNDS: number[] = [0.10401182679403116, 0.7996693586576467, 0.18312399144408265, 0.8343189318329005]; // [west, south, east, north] in EPSG:4979 (rad)
-const DEFAULT_START_COORDS = [6.629047, 46.516591]; // [lon, lat]
+const DEFAULT_START_COORDS: LatLng = { lat: 46.516591, lng: 6.629047 };
 const HEIGHT_FULL_GLOBE_VISIBLE = 7000000;
 const HEIGHT_ABOVE_TARGET_COORDS_ELEVATION = 1000; // [m]
+const TOLERANCE_DISTANCE_COORDS_NO_WAIT_TO_DESCENT = 500000; // [m]
 
 // NB: Put reference to REUSABLE object to null after done using to minimize risk of reusing a REUSABLE object before it was done being used by the previous user.
 const REUSABLE_VECTOR2 = new Vector2();
@@ -85,7 +93,7 @@ export class ViewerComponent {
 
 	@ViewChild('canvas') canvas!: ElementRef<HTMLCanvasElement>;
 
-	currentPosition = { lon: 0, lat: 0, height: 0 }; // [rad, rad, m]
+	currentPosition: LatLon & { height: number } = { lon: 0, lat: 0, height: 0 }; // [rad, rad, m]
 
 	constructor() {
 		this.dracoLoader = new DRACOLoader();
@@ -208,8 +216,8 @@ export class ViewerComponent {
 		this.render();
 
 		// Set init camera position
-		this.currentPosition.lon = DEFAULT_START_COORDS[0] * MathUtils.DEG2RAD;
-		this.currentPosition.lat = DEFAULT_START_COORDS[1] * MathUtils.DEG2RAD;
+		this.currentPosition.lon = DEFAULT_START_COORDS.lng * MathUtils.DEG2RAD;
+		this.currentPosition.lat = DEFAULT_START_COORDS.lat * MathUtils.DEG2RAD;
 		this.currentPosition.height = HEIGHT_FULL_GLOBE_VISIBLE;
 		this.moveCameraTo(this.currentPosition);
 
@@ -278,6 +286,12 @@ export class ViewerComponent {
 			Math.max(distancePercentage * maxTotalAnimationDuration, climbAnimationDuration + descentAnimationDuration),
 			maxTotalAnimationDuration
 		);
+		const rotationDistance = haversineDistance(this.currentPosition, {
+			lat: destination.coords.lat() * MathUtils.DEG2RAD,
+			lon: destination.coords.lng() * MathUtils.DEG2RAD,
+		});
+		const descentAnimationDelayTime =
+			rotationDistance < TOLERANCE_DISTANCE_COORDS_NO_WAIT_TO_DESCENT ? 0 : totalAnimationDuration / 2;
 
 		this.raycaster.setFromCamera(REUSABLE_VECTOR2.set(0, 0), this.camera);
 		const cameraGlobeIntersections: Intersection[] = [];
@@ -338,7 +352,11 @@ export class ViewerComponent {
 							lat: destination.coords.lat() * MathUtils.DEG2RAD,
 						},
 						duration: totalAnimationDuration,
-						ease: 'power4.inOut',
+						ease:
+							climbAnimationDuration === 0 &&
+							rotationDistance < TOLERANCE_DISTANCE_COORDS_NO_WAIT_TO_DESCENT
+								? 'power4.out'
+								: 'power4.inOut',
 					},
 					0
 				)
@@ -354,7 +372,7 @@ export class ViewerComponent {
 				.to(
 					this.currentPosition,
 					{ height: height, duration: descentAnimationDuration, ease: 'power3.out' },
-					climbAnimationDuration === 0 ? totalAnimationDuration / 2 : '>' // Don't go down too quickly and give time to the user to see the globe rotating in case we are already super zoomed out.
+					climbAnimationDuration === 0 ? descentAnimationDelayTime : '>' // Don't go down too quickly and give time to the user to see the globe rotating in case we are already super zoomed out.
 				)
 				.eventCallback('onUpdate', () => {
 					this.moveCameraTo(this.currentPosition);
@@ -364,7 +382,9 @@ export class ViewerComponent {
 				});
 		};
 		this.zoomToCoordsAnimationTl = gsap.timeline();
-		this.zoomToCoordsAnimationTl.add(pivotResetTl());
+		if (!this.isControlsRotationReset) {
+			this.zoomToCoordsAnimationTl.add(pivotResetTl());
+		}
 		this.zoomToCoordsAnimationTl.add(cameraTravelTl());
 	}
 
