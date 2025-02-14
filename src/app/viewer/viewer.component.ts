@@ -453,6 +453,7 @@ export class ViewerComponent {
 				maxInstanceCount: Infinity,
 				discardOriginalContent: true,
 				material: null,
+				textureSize: null,
 			})
 		);
 		target.registerPlugin(this.debugTilesPlugin);
