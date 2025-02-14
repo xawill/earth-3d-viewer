@@ -5,6 +5,8 @@ import {
 	BatchedTilesPlugin,
 	TileCompressionPlugin,
 	DebugTilesPlugin,
+	UpdateOnChangePlugin,
+	XYZTilesPlugin,
 } from '3d-tiles-renderer/plugins';
 import {
 	AmbientLight,
@@ -47,6 +49,8 @@ const SWISSTOPO_TLM_3D_TILES_TILESET_URL = 'https://3d.geo.admin.ch/ch.swisstopo
 const SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL = 'https://3d.geo.admin.ch/ch.swisstopo.vegetation.3d/v1/tileset.json';
 const SWISSTOPO_NAMES_3D_TILES_TILESET_URL =
 	'https://3d.geo.admin.ch/3d-tiles/ch.swisstopo.swissnames3d.3d/20180716/tileset.json';
+const SWISSTOPO_ORTHOIMAGES_XYZ_URL =
+	'https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg';
 
 const SWIZERLAND_BOUNDS: number[] = [0.10401182679403116, 0.7996693586576467, 0.18312399144408265, 0.8343189318329005]; // [west, south, east, north] in EPSG:4979 (rad)
 const DEFAULT_START_COORDS: LatLng = { lat: 46.516591, lng: 6.629047 };
@@ -93,6 +97,7 @@ export class ViewerComponent {
 	private swisstopoTlmTiles = new TilesRenderer(SWISSTOPO_TLM_3D_TILES_TILESET_URL);
 	private swisstopoVegetationTiles = new TilesRenderer(SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL);
 	private swisstopoNamesTiles = new TilesRenderer(SWISSTOPO_NAMES_3D_TILES_TILESET_URL);
+	private swisstopoOrthoimages = new TilesRenderer(SWISSTOPO_ORTHOIMAGES_XYZ_URL);
 	private debugTilesPlugin = new DebugTilesPlugin();
 
 	private googleTilesOpacity = 1;
@@ -214,10 +219,11 @@ export class ViewerComponent {
 		document.body.appendChild(this.stats.dom);
 
 		this.initGoogleTileset(this.googleTiles);
-		this.initSwisstopoTileset(this.swisstopoBuildingsTiles);
-		this.initSwisstopoTileset(this.swisstopoTlmTiles);
-		this.initSwisstopoTileset(this.swisstopoVegetationTiles);
-		//this.initSwisstopoTileset(this.swisstopoNamesTiles); // TODO: .vctr format not supported (yet). // TODO: Find most recent tileset (if it even exists?)
+		this.initSwisstopo3DTileset(this.swisstopoBuildingsTiles);
+		this.initSwisstopo3DTileset(this.swisstopoTlmTiles);
+		this.initSwisstopo3DTileset(this.swisstopoVegetationTiles);
+		//this.initSwisstopo3DTileset(this.swisstopoNamesTiles); // TODO: .vctr format not supported (yet). // TODO: Find most recent tileset (if it even exists?)
+		this.initSwisstopoXYZTileset(this.swisstopoOrthoimages);
 
 		this.render();
 
@@ -416,7 +422,6 @@ export class ViewerComponent {
 			if ($event.googleTiles.opacity !== undefined) {
 				this.googleTilesOpacity = $event.googleTiles!.opacity!;
 				updateObjectAndChildrenOpacity(this.googleTiles.group, this.googleTilesOpacity);
-				this.renderingNeedsUpdate = true;
 			}
 		}
 		if ($event.swisstopoBuildingsTiles !== undefined && $event.swisstopoBuildingsTiles.enabled !== undefined) {
@@ -430,6 +435,9 @@ export class ViewerComponent {
 		}
 		if ($event.swisstopoNamesTiles !== undefined && $event.swisstopoNamesTiles.enabled !== undefined) {
 			this.swisstopoNamesTiles.group.visible = $event.swisstopoNamesTiles.enabled;
+		}
+		if ($event.swisstopoOrthoimages !== undefined && $event.swisstopoOrthoimages.enabled !== undefined) {
+			this.swisstopoOrthoimages.group.visible = $event.swisstopoOrthoimages.enabled;
 		}
 		this.renderingNeedsUpdate = true;
 	}
@@ -489,7 +497,7 @@ export class ViewerComponent {
 		});
 	}
 
-	private initSwisstopoTileset(target: TilesRenderer): void {
+	private initSwisstopo3DTileset(target: TilesRenderer): void {
 		target.displayActiveTiles = true;
 
 		const gltfLoader = new GLTFLoader(target.manager);
@@ -511,6 +519,40 @@ export class ViewerComponent {
 			this.renderingNeedsUpdate = true;
 		});
 		target.addEventListener('load-model', () => {
+			this.renderingNeedsUpdate = true; // TODO: Debounce
+		});
+	}
+
+	private initSwisstopoXYZTileset(target: TilesRenderer): void {
+		target.displayActiveTiles = true;
+		target.errorTarget = 1;
+
+		target.registerPlugin(
+			new XYZTilesPlugin({
+				levels: 29,
+				center: true,
+				shape: 'ellipsoid',
+			} as any) // TODO: Remove any cast when 3d-tiles-renderer types are fixed.
+		);
+		target.registerPlugin(new UpdateOnChangePlugin());
+
+		target.setCamera(this.camera);
+		target.setResolutionFromRenderer(this.camera, this.renderer);
+
+		this.earth.add(target.group);
+
+		target.addEventListener('load-tile-set', (_o: { tileSet?: Object }) => {
+			// We empirically find the approximate offset with Google Photorealistic 3D Tiles at Gare de Vevey to have them more or less aligned.
+			target.group.position.x = 300;
+			target.group.position.y = 30;
+			target.group.position.z = 325;
+			this.renderingNeedsUpdate = true;
+		});
+		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
+			// TODO: Implement enabling SWISSIMAGE only when zoom level is close enough to the ground.
+		});
+
+		target.addEventListener('update-after', () => {
 			this.renderingNeedsUpdate = true; // TODO: Debounce
 		});
 	}
@@ -542,6 +584,9 @@ export class ViewerComponent {
 			}
 			if (this.swisstopoNamesTiles.hasCamera(this.camera) && this.swisstopoNamesTiles.group.visible) {
 				this.swisstopoNamesTiles.update();
+			}
+			if (this.swisstopoOrthoimages.hasCamera(this.camera) && this.swisstopoOrthoimages.group.visible) {
+				this.swisstopoOrthoimages.update();
 			}
 
 			this.renderer.render(this.scene, this.camera);
