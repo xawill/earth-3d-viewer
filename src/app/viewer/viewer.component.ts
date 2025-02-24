@@ -225,8 +225,6 @@ export class ViewerComponent {
 		//this.initSwisstopo3DTileset(this.swisstopoNamesTiles); // TODO: .vctr format not supported (yet). // TODO: Find most recent tileset (if it even exists?)
 		this.initSwisstopoXYZTileset(this.swisstopoOrthoimages);
 
-		this.render();
-
 		// Set init camera position
 		this.currentPosition.lon = DEFAULT_START_COORDS.lng * MathUtils.DEG2RAD;
 		this.currentPosition.lat = DEFAULT_START_COORDS.lat * MathUtils.DEG2RAD;
@@ -235,6 +233,8 @@ export class ViewerComponent {
 
 		this.onWindowResize();
 		window.addEventListener('resize', () => this.onWindowResize(), false);
+
+		this.render();
 	}
 
 	async zoomTo(destination: { coords: google.maps.LatLng; elevation: number }) {
@@ -439,6 +439,7 @@ export class ViewerComponent {
 		if ($event.swisstopoOrthoimages !== undefined && $event.swisstopoOrthoimages.enabled !== undefined) {
 			this.swisstopoOrthoimages.group.visible = $event.swisstopoOrthoimages.enabled;
 		}
+
 		this.renderingNeedsUpdate = true;
 	}
 
@@ -464,10 +465,10 @@ export class ViewerComponent {
 				textureSize: null,
 			})
 		);
-		target.registerPlugin(this.debugTilesPlugin);
+		/*target.registerPlugin(this.debugTilesPlugin);
 		this.debugTilesPlugin.maxDebugError = 100;
 		this.debugTilesPlugin.maxDebugDistance = 100;
-		this.debugTilesPlugin.enabled = false;
+		this.debugTilesPlugin.enabled = false;*/
 		//target.registerPlugin(new TileCompressionPlugin()); // TODO: Needed?
 
 		const gltfLoader = new GLTFLoader(target.manager);
@@ -482,6 +483,9 @@ export class ViewerComponent {
 		this.controls.setTilesRenderer(target);
 
 		target.addEventListener('load-tile-set', () => {
+			this.renderingNeedsUpdate = true;
+		});
+		target.addEventListener('tiles-load-end', () => {
 			this.renderingNeedsUpdate = true;
 		});
 		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
@@ -518,6 +522,9 @@ export class ViewerComponent {
 
 			this.renderingNeedsUpdate = true;
 		});
+		target.addEventListener('tiles-load-end', () => {
+			this.renderingNeedsUpdate = true;
+		});
 		target.addEventListener('load-model', () => {
 			this.renderingNeedsUpdate = true; // TODO: Debounce
 		});
@@ -548,11 +555,14 @@ export class ViewerComponent {
 			target.group.position.z = 325;
 			this.renderingNeedsUpdate = true;
 		});
+		target.addEventListener('load-content', () => {
+			this.renderingNeedsUpdate = true;
+		});
+		target.addEventListener('tiles-load-end', () => {
+			this.renderingNeedsUpdate = true;
+		});
 		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
 			// TODO: Implement enabling SWISSIMAGE only when zoom level is close enough to the ground.
-		});
-
-		target.addEventListener('update-after', () => {
 			this.renderingNeedsUpdate = true; // TODO: Debounce
 		});
 	}
@@ -565,6 +575,7 @@ export class ViewerComponent {
 		this.stats.update();
 
 		if (this.renderingNeedsUpdate) {
+			//console.log('RENDERING');
 			this.renderingNeedsUpdate = false;
 
 			this.controls.update();

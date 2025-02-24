@@ -11,12 +11,12 @@ export function updateObjectAndChildrenOpacity(object: Object3D, opacity: number
 		if (mesh && mesh.material) {
 			if (Array.isArray(mesh.material)) {
 				for (const m of mesh.material) {
-					m.transparent = true;
+					m.transparent = opacity === 1 ? false : true;
 					m.opacity = opacity;
 					m.needsUpdate = true;
 				}
 			} else {
-				mesh.material.transparent = true;
+				mesh.material.transparent = opacity === 1 ? false : true;
 				mesh.material.opacity = opacity;
 				mesh.material.needsUpdate = true;
 			}
