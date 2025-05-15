@@ -23,6 +23,9 @@ import {
 	WebGLRenderer,
 	Object3D,
 	AxesHelper,
+	MeshBasicMaterial,
+	SRGBColorSpace,
+	TextureLoader,
 } from 'three';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
@@ -41,6 +44,9 @@ import {
 	threejsPositionToTiles,
 	tilesPositionToThreejs,
 } from '../utils/map-utils';
+import { TextureOverlayPlugin } from '../utils/overlays/TextureOverlayPlugin';
+import { TextureOverlayMaterialMixin } from '../utils/overlays/TextureOverlayMaterial';
+import { isMesh } from '../utils/three-type-guards';
 
 const GOOGLE_3D_TILES_TILESET_URL = 'https://tile.googleapis.com/v1/3dtiles/root.json';
 const SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL =
@@ -543,6 +549,30 @@ export class ViewerComponent {
 		);
 		target.registerPlugin(new UpdateOnChangePlugin());
 
+		// Experiment texture overlay with other Switzerland raster map
+		/*const TextureOverlayMaterial = TextureOverlayMaterialMixin(MeshBasicMaterial);
+		const overlayPlugin = new TextureOverlayPlugin({
+			textureUpdateCallback: (scene: Object3D, tile: Tile, plugin: TextureOverlayPlugin) => {
+				scene.traverse(child => {
+					if (isMesh(child) && child.material) {
+						const material = child.material as any;
+						material.textures = Object.values(plugin.getTexturesForTile(tile));
+						material.displayAsOverlay = false;
+						material.needsUpdate = true;
+					}
+				});
+			},
+		});
+		target.registerPlugin(overlayPlugin);
+		overlayPlugin.registerLayer('pixelkarte', async (tileUrl: string) => {
+			const url = tileUrl.replace('ch.swisstopo.swissimage', 'ch.swisstopo.pixelkarte-farbe');
+			return new TextureLoader().loadAsync(url).then(tex => {
+				tex.colorSpace = SRGBColorSpace;
+				tex.flipY = true;
+				return tex;
+			});
+		});*/
+
 		target.setCamera(this.camera);
 		target.setResolutionFromRenderer(this.camera, this.renderer);
 
@@ -562,7 +592,14 @@ export class ViewerComponent {
 			this.renderingNeedsUpdate = true;
 		});
 		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
-			// TODO: Implement enabling SWISSIMAGE only when zoom level is close enough to the ground.
+			/*o.scene.traverse(child => {
+				if (isMesh(child)) {
+					const originalMaterial = child.material as MeshBasicMaterial;
+					const newMaterial = new TextureOverlayMaterial() as any;
+					newMaterial.copy(originalMaterial);
+					child.material = newMaterial;
+				}
+			});*/
 			this.renderingNeedsUpdate = true; // TODO: Debounce
 		});
 	}
