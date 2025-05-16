@@ -542,12 +542,6 @@ export class ViewerComponent {
 
 		this.controls.setTilesRenderer(target);
 
-		target.addEventListener('load-tile-set', () => {
-			this.renderingNeedsUpdate = true;
-		});
-		target.addEventListener('tiles-load-end', () => {
-			this.renderingNeedsUpdate = true;
-		});
 		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
 			updateObjectAndChildrenOpacity(o.scene, this.googleTilesOpacity);
 			this.renderingNeedsUpdate = true; // TODO: Debounce
@@ -558,6 +552,9 @@ export class ViewerComponent {
 				updateObjectAndChildrenOpacity(o.scene, this.googleTilesOpacity);
 				this.renderingNeedsUpdate = true;
 			}
+		});
+		target.addEventListener('needs-update', () => {
+			this.renderingNeedsUpdate = true;
 		});
 	}
 
@@ -577,11 +574,8 @@ export class ViewerComponent {
 			target.group.position.copy(SWISS_GEOID_ELLIPSOID_OFFSET);
 			this.renderingNeedsUpdate = true;
 		});
-		target.addEventListener('tiles-load-end', () => {
+		target.addEventListener('needs-update', () => {
 			this.renderingNeedsUpdate = true;
-		});
-		target.addEventListener('load-model', () => {
-			this.renderingNeedsUpdate = true; // TODO: Debounce
 		});
 	}
 
@@ -657,12 +651,6 @@ export class ViewerComponent {
 			target.group.position.copy(SWISS_GEOID_ELLIPSOID_OFFSET);
 			this.renderingNeedsUpdate = true;
 		});
-		target.addEventListener('load-content', () => {
-			this.renderingNeedsUpdate = true;
-		});
-		target.addEventListener('tiles-load-end', () => {
-			this.renderingNeedsUpdate = true;
-		});
 		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
 			o.scene.receiveShadow = true;
 			o.scene.castShadow = true;
@@ -683,6 +671,9 @@ export class ViewerComponent {
 				}
 			});
 			this.renderingNeedsUpdate = true; // TODO: Debounce
+		});
+		target.addEventListener('needs-update', () => {
+			this.renderingNeedsUpdate = true;
 		});
 	}
 
@@ -739,12 +730,6 @@ export class ViewerComponent {
 			target.group.position.z = 325;
 			this.renderingNeedsUpdate = true;
 		});
-		target.addEventListener('load-content', () => {
-			this.renderingNeedsUpdate = true;
-		});
-		target.addEventListener('tiles-load-end', () => {
-			this.renderingNeedsUpdate = true;
-		});
 		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
 			/*o.scene.traverse(child => {
 				if (isMesh(child)) {
@@ -755,6 +740,9 @@ export class ViewerComponent {
 				}
 			});*/
 			this.renderingNeedsUpdate = true; // TODO: Debounce
+		});
+		target.addEventListener('needs-update', () => {
+			this.renderingNeedsUpdate = true;
 		});
 	}
 
