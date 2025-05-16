@@ -7,6 +7,7 @@ import {
 	DebugTilesPlugin,
 	UpdateOnChangePlugin,
 	XYZTilesPlugin,
+	QuantizedMeshPlugin,
 } from '3d-tiles-renderer/plugins';
 import {
 	AmbientLight,
@@ -24,8 +25,11 @@ import {
 	Object3D,
 	AxesHelper,
 	MeshBasicMaterial,
-	SRGBColorSpace,
 	TextureLoader,
+	SRGBColorSpace,
+	MeshStandardMaterial,
+	RGBFormat,
+	DataTexture,
 } from 'three';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
@@ -55,6 +59,9 @@ const SWISSTOPO_TLM_3D_TILES_TILESET_URL = 'https://3d.geo.admin.ch/ch.swisstopo
 const SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL = 'https://3d.geo.admin.ch/ch.swisstopo.vegetation.3d/v1/tileset.json';
 const SWISSTOPO_NAMES_3D_TILES_TILESET_URL =
 	'https://3d.geo.admin.ch/3d-tiles/ch.swisstopo.swissnames3d.3d/20180716/tileset.json';
+const SWISSTOPO_TERRAIN_3D_TILES_TILESET_URL = 'https://3d.geo.admin.ch/ch.swisstopo.terrain.3d/v1/layer.json';
+const SWISSTOPO_SWISSIMAGE_WMTS_4326_URL =
+	'https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/4326/{z}/{x}/{y}.jpeg'; // Max zoom level is 19
 const SWISSTOPO_ORTHOIMAGES_XYZ_URL =
 	'https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg';
 
@@ -63,6 +70,29 @@ const DEFAULT_START_COORDS: LatLng = { lat: 46.516591, lng: 6.629047 };
 const HEIGHT_FULL_GLOBE_VISIBLE = 7000000;
 const HEIGHT_ABOVE_TARGET_COORDS_ELEVATION = 1000; // [m]
 const TOLERANCE_DISTANCE_COORDS_NO_WAIT_TO_DESCENT = 500000; // [m]
+
+const ZOOM_LEVEL_COLORS_DEBUG = [
+	0x888888, // Gray
+	0xffffff, // White
+	0x000000, // Black
+	0xff0000, // Red
+	0x00ff00, // Green
+	0x0000ff, // Blue
+	0xffff00, // Yellow
+	0xff00ff, // Magenta
+	0x00ffff, // Cyan
+	0x880000, // Dark Red
+	0x008800, // Dark Green
+	0x000088, // Dark Blue
+	0x888800, // Olive
+	0x880088, // Purple
+	0x008888, // Teal
+	0x444444, // Dark Gray
+	0xff8800, // Orange
+	0x88ff00, // Lime
+	0x0088ff, // Sky Blue
+	0xff0088, // Pink
+];
 
 // NB: Put reference to REUSABLE object to null after done using to minimize risk of reusing a REUSABLE object before it was done being used by the previous user.
 const REUSABLE_VECTOR2 = new Vector2();
@@ -103,8 +133,14 @@ export class ViewerComponent {
 	private swisstopoTlmTiles = new TilesRenderer(SWISSTOPO_TLM_3D_TILES_TILESET_URL);
 	private swisstopoVegetationTiles = new TilesRenderer(SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL);
 	private swisstopoNamesTiles = new TilesRenderer(SWISSTOPO_NAMES_3D_TILES_TILESET_URL);
+	private swisstopoTerrainTiles = new TilesRenderer(SWISSTOPO_TERRAIN_3D_TILES_TILESET_URL);
 	private swisstopoOrthoimages = new TilesRenderer(SWISSTOPO_ORTHOIMAGES_XYZ_URL);
-	private debugTilesPlugin = new DebugTilesPlugin();
+
+	private googleDebugTilesPlugin = new DebugTilesPlugin({
+		maxDebugError: 100,
+		maxDebugDistance: 100,
+		displayBoxBounds: true,
+	});
 
 	private googleTilesOpacity = 1;
 
@@ -148,10 +184,12 @@ export class ViewerComponent {
 		this.renderer.setPixelRatio(window.devicePixelRatio);
 		this.renderer.setSize(window.innerWidth, window.innerHeight);
 		this.renderer.setClearColor(0x151c1f);
+		//this.renderer.localClippingEnabled = true;
 		this.renderer.shadowMap.enabled = true;
 		this.renderer.shadowMap.type = PCFSoftShadowMap;
 
 		this.camera = new PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, WGS84_RADIUS * 2);
+		//this.scene.add(this.camera);
 
 		this.controls = new GlobeControls(this.scene, this.camera, this.renderer.domElement);
 		this.controls.enableDamping = false;
@@ -229,7 +267,8 @@ export class ViewerComponent {
 		this.initSwisstopo3DTileset(this.swisstopoTlmTiles);
 		this.initSwisstopo3DTileset(this.swisstopoVegetationTiles);
 		//this.initSwisstopo3DTileset(this.swisstopoNamesTiles); // TODO: .vctr format not supported (yet). // TODO: Find most recent tileset (if it even exists?)
-		this.initSwisstopoXYZTileset(this.swisstopoOrthoimages);
+		this.initSwisstopoQuantizedTileset(this.swisstopoTerrainTiles);
+		//this.initSwisstopoXYZTileset(this.swisstopoOrthoimages); // Removed, as this is now included in the textured Quantized mesh terrain
 
 		// Set init camera position
 		this.currentPosition.lon = DEFAULT_START_COORDS.lng * MathUtils.DEG2RAD;
@@ -396,7 +435,7 @@ export class ViewerComponent {
 					this.moveCameraTo(this.currentPosition);
 				})
 				.eventCallback('onComplete', () => {
-					this.debugTilesPlugin.colorMode = 2;
+					this.googleDebugTilesPlugin.colorMode = 1;
 					this.isControlsRotationReset = true;
 				});
 		};
@@ -443,7 +482,7 @@ export class ViewerComponent {
 			this.swisstopoNamesTiles.group.visible = $event.swisstopoNamesTiles.enabled;
 		}
 		if ($event.swisstopoOrthoimages !== undefined && $event.swisstopoOrthoimages.enabled !== undefined) {
-			this.swisstopoOrthoimages.group.visible = $event.swisstopoOrthoimages.enabled;
+			this.swisstopoTerrainTiles.group.visible = $event.swisstopoOrthoimages.enabled;
 		}
 
 		this.renderingNeedsUpdate = true;
@@ -454,7 +493,6 @@ export class ViewerComponent {
 	}
 
 	private initGoogleTileset(target: TilesRenderer): void {
-		target.displayActiveTiles = true;
 		target.errorTarget = 0;
 
 		target.registerPlugin(new GoogleCloudAuthPlugin({ apiToken: environment.GOOGLE_MAPS_3D_TILES_API_KEY }));
@@ -471,10 +509,8 @@ export class ViewerComponent {
 				textureSize: null,
 			})
 		);
-		/*target.registerPlugin(this.debugTilesPlugin);
-		this.debugTilesPlugin.maxDebugError = 100;
-		this.debugTilesPlugin.maxDebugDistance = 100;
-		this.debugTilesPlugin.enabled = false;*/
+		target.registerPlugin(this.googleDebugTilesPlugin);
+		this.googleDebugTilesPlugin.enabled = false;
 		//target.registerPlugin(new TileCompressionPlugin()); // TODO: Needed?
 
 		const gltfLoader = new GLTFLoader(target.manager);
@@ -508,7 +544,7 @@ export class ViewerComponent {
 	}
 
 	private initSwisstopo3DTileset(target: TilesRenderer): void {
-		target.displayActiveTiles = true;
+		target.errorTarget = 1;
 
 		const gltfLoader = new GLTFLoader(target.manager);
 		gltfLoader.setDRACOLoader(this.dracoLoader);
@@ -519,13 +555,7 @@ export class ViewerComponent {
 
 		this.earth.add(target.group);
 
-		target.addEventListener('load-tile-set', (_o: { tileSet?: Object }) => {
-			// NB: Google Photorealistic 3D Tiles are not "survey-grade", so altitude is imprecise (see https://github.com/NASA-AMMOS/3DTilesRendererJS/issues/748).
-			// We empirically find the approximate offset with swisstopo "survey-grade" 3D tiles to have them more or less aligned.
-			target.group.position.x = 34;
-			target.group.position.y = 5;
-			target.group.position.z = 36;
-
+		target.addEventListener('load-tile-set', () => {
 			this.renderingNeedsUpdate = true;
 		});
 		target.addEventListener('tiles-load-end', () => {
@@ -536,8 +566,102 @@ export class ViewerComponent {
 		});
 	}
 
+	private initSwisstopoQuantizedTileset(target: TilesRenderer): void {
+		target.errorTarget = 1;
+
+		target.registerPlugin(new QuantizedMeshPlugin({}));
+		target.registerPlugin(new UpdateOnChangePlugin());
+
+		const debugPlugin = new DebugTilesPlugin({
+			displayRegionBounds: true,
+			colorMode: 9,
+			customColorCallback: (tile, object) => {
+				const [, zoomLevel] = tile.content!.uri.match(/\d{8}\/(\d+)\/\d+\/\d+\.terrain/)!;
+				object.traverse(child => {
+					if (isMesh(child)) {
+						(child.material as MeshStandardMaterial).color.set(
+							ZOOM_LEVEL_COLORS_DEBUG[parseInt(zoomLevel)]
+						);
+					}
+				});
+			},
+		});
+		target.registerPlugin(debugPlugin);
+		debugPlugin.enabled = false;
+
+		// Texture with SWISSIMAGE
+		const TextureOverlayMaterial = TextureOverlayMaterialMixin(MeshBasicMaterial);
+		const overlayPlugin = new TextureOverlayPlugin({
+			textureUpdateCallback: (scene: Object3D, tile: Tile, plugin: TextureOverlayPlugin) => {
+				scene.traverse(child => {
+					if (isMesh(child)) {
+						const material = child.material as any;
+						material.textures = Object.values(plugin.getTexturesForTile(tile));
+						material.displayAsOverlay = false;
+						material.needsUpdate = true;
+					}
+				});
+			},
+			waitForLoadCompletion: false,
+		});
+		target.registerPlugin(overlayPlugin);
+		overlayPlugin.registerLayer('swissimage', async (tileUrl: string) => {
+			// TODO: It looks like swissimage is only loaded at zoom level 16 max, even if available at 19. So probably terrain tiles are only available up to level 16. In that case, let's stick higher res' swissimage tiles together
+			// TODO: Try to texture with native swissimage in EPSG:21781, so that we can go up to level 28
+			// Check EPSG:4326 tiles idx for debugging here: https://codepen.io/procrastinatio/pen/BgaGWZ
+			const [, z, x, y] = tileUrl.match(/\/(\d+)\/(\d+)\/(\d+)\.terrain/)!;
+			const wmtsFlippedY = Math.pow(2, parseInt(z)) - 1 - parseInt(y);
+			const swissimageUrl = SWISSTOPO_SWISSIMAGE_WMTS_4326_URL.replace('{z}', z)
+				.replace('{x}', x)
+				.replace('{y}', wmtsFlippedY.toString());
+			return new TextureLoader()
+				.loadAsync(swissimageUrl)
+				.then(tex => {
+					tex.colorSpace = SRGBColorSpace;
+					tex.flipY = true;
+					return tex;
+				})
+				.catch(_ => {});
+		});
+
+		target.setCamera(this.camera);
+		target.setResolutionFromRenderer(this.camera, this.renderer);
+
+		this.earth.add(target.group);
+
+		target.addEventListener('load-tile-set', () => {
+			this.renderingNeedsUpdate = true;
+		});
+		target.addEventListener('load-content', () => {
+			this.renderingNeedsUpdate = true;
+		});
+		target.addEventListener('tiles-load-end', () => {
+			this.renderingNeedsUpdate = true;
+		});
+		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
+			o.scene.receiveShadow = true;
+			o.scene.castShadow = true;
+			o.scene.traverse(child => {
+				if (isMesh(child) && child.material) {
+					const originalMaterial = child.material as MeshStandardMaterial;
+					const edgeSize = 256; // [pixels]
+					originalMaterial.map = new DataTexture(
+						new Uint8Array(edgeSize * edgeSize * 3),
+						edgeSize,
+						edgeSize,
+						RGBFormat
+					); // Size: 3 channels (R, G, B)
+
+					const newMaterial = new TextureOverlayMaterial() as any;
+					newMaterial.copy(originalMaterial);
+					child.material = newMaterial;
+				}
+			});
+			this.renderingNeedsUpdate = true; // TODO: Debounce
+		});
+	}
+
 	private initSwisstopoXYZTileset(target: TilesRenderer): void {
-		target.displayActiveTiles = true;
 		target.errorTarget = 1;
 
 		target.registerPlugin(
@@ -632,6 +756,9 @@ export class ViewerComponent {
 			}
 			if (this.swisstopoNamesTiles.hasCamera(this.camera) && this.swisstopoNamesTiles.group.visible) {
 				this.swisstopoNamesTiles.update();
+			}
+			if (this.swisstopoTerrainTiles.hasCamera(this.camera) && this.swisstopoTerrainTiles.group.visible) {
+				this.swisstopoTerrainTiles.update();
 			}
 			if (this.swisstopoOrthoimages.hasCamera(this.camera) && this.swisstopoOrthoimages.group.visible) {
 				this.swisstopoOrthoimages.update();
