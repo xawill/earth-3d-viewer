@@ -8,6 +8,7 @@ import {
 	UpdateOnChangePlugin,
 	XYZTilesPlugin,
 	QuantizedMeshPlugin,
+	LoadRegionPlugin,
 } from '3d-tiles-renderer/plugins';
 import {
 	AmbientLight,
@@ -32,6 +33,7 @@ import {
 	DataTexture,
 } from 'three';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
+import GUI from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { AddressSearchComponent } from '../address-search/address-search.component';
@@ -48,6 +50,8 @@ import {
 	threejsPositionToTiles,
 	tilesPositionToThreejs,
 } from '../utils/map-utils';
+import { SwitzerlandRegion } from '../utils/SwitzerlandRegion';
+import { OutsideSwitzerlandRegion } from '../utils/OutsideSwitzerlandRegion';
 import { TextureOverlayPlugin } from '../utils/overlays/TextureOverlayPlugin';
 import { TextureOverlayMaterialMixin } from '../utils/overlays/TextureOverlayMaterial';
 import { isMesh } from '../utils/three-type-guards';
@@ -65,11 +69,12 @@ const SWISSTOPO_SWISSIMAGE_WMTS_4326_URL =
 const SWISSTOPO_ORTHOIMAGES_XYZ_URL =
 	'https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg';
 
-const SWIZERLAND_BOUNDS: number[] = [0.10401182679403116, 0.7996693586576467, 0.18312399144408265, 0.8343189318329005]; // [west, south, east, north] in EPSG:4979 (rad)
 const DEFAULT_START_COORDS: LatLng = { lat: 46.516591, lng: 6.629047 };
 const HEIGHT_FULL_GLOBE_VISIBLE = 7000000;
 const HEIGHT_ABOVE_TARGET_COORDS_ELEVATION = 1000; // [m]
 const TOLERANCE_DISTANCE_COORDS_NO_WAIT_TO_DESCENT = 500000; // [m]
+const SWITZERLAND_REGION_CAMERA_ELEVATION_THRESHOLD = 350000; // [m]
+const SWISS_GEOID_ELLIPSOID_OFFSET = new Vector3(34, 5, 36); // We empirically find the approximate offset with Google Photorealistic 3D Tiles at Gare de Vevey to have them more or less aligned. Read more here https://www.swisstopo.admin.ch/fr/geoid-fr and https://bertt.wordpress.com/2023/07/11/adding-objects-to-google-photorealistic-3d-tiles/
 
 const ZOOM_LEVEL_COLORS_DEBUG = [
 	0x888888, // Gray
@@ -261,6 +266,17 @@ export class ViewerComponent {
 		this.stats = new Stats();
 		this.stats.showPanel(0);
 		document.body.appendChild(this.stats.dom);
+
+		/*const gui = new GUI({ width: 300 });
+		gui.add(this.swisstopoTerrainTiles.group.position, 'x', 0, 50).onChange(value => {
+			this.renderingNeedsUpdate = true;
+		});
+		gui.add(this.swisstopoTerrainTiles.group.position, 'y', 0, 20).onChange(value => {
+			this.renderingNeedsUpdate = true;
+		});
+		gui.add(this.swisstopoTerrainTiles.group.position, 'z', 0, 50).onChange(value => {
+			this.renderingNeedsUpdate = true;
+		});*/
 
 		this.initGoogleTileset(this.googleTiles);
 		this.initSwisstopo3DTileset(this.swisstopoBuildingsTiles);
@@ -481,9 +497,6 @@ export class ViewerComponent {
 		if ($event.swisstopoNamesTiles !== undefined && $event.swisstopoNamesTiles.enabled !== undefined) {
 			this.swisstopoNamesTiles.group.visible = $event.swisstopoNamesTiles.enabled;
 		}
-		if ($event.swisstopoOrthoimages !== undefined && $event.swisstopoOrthoimages.enabled !== undefined) {
-			this.swisstopoTerrainTiles.group.visible = $event.swisstopoOrthoimages.enabled;
-		}
 
 		this.renderingNeedsUpdate = true;
 	}
@@ -516,6 +529,11 @@ export class ViewerComponent {
 		const gltfLoader = new GLTFLoader(target.manager);
 		gltfLoader.setDRACOLoader(this.dracoLoader);
 		target.manager.addHandler(/\.gltf$/, gltfLoader);
+
+		// Remove Google tiles in Switzerland to use swisstopo's better dataset there.
+		const regionsPlugin = new LoadRegionPlugin();
+		target.registerPlugin(regionsPlugin);
+		regionsPlugin.addRegion(new OutsideSwitzerlandRegion(SWITZERLAND_REGION_CAMERA_ELEVATION_THRESHOLD));
 
 		target.setCamera(this.camera);
 		target.setResolutionFromRenderer(this.camera, this.renderer);
@@ -555,7 +573,8 @@ export class ViewerComponent {
 
 		this.earth.add(target.group);
 
-		target.addEventListener('load-tile-set', () => {
+		target.addEventListener('load-tile-set', (_o: { tileSet?: Object }) => {
+			target.group.position.copy(SWISS_GEOID_ELLIPSOID_OFFSET);
 			this.renderingNeedsUpdate = true;
 		});
 		target.addEventListener('tiles-load-end', () => {
@@ -588,6 +607,11 @@ export class ViewerComponent {
 		});
 		target.registerPlugin(debugPlugin);
 		debugPlugin.enabled = false;
+
+		// Keep tiles only inside Switzerland.
+		const regionsPlugin = new LoadRegionPlugin();
+		target.registerPlugin(regionsPlugin);
+		regionsPlugin.addRegion(new SwitzerlandRegion(SWITZERLAND_REGION_CAMERA_ELEVATION_THRESHOLD));
 
 		// Texture with SWISSIMAGE
 		const TextureOverlayMaterial = TextureOverlayMaterialMixin(MeshBasicMaterial);
@@ -630,6 +654,7 @@ export class ViewerComponent {
 		this.earth.add(target.group);
 
 		target.addEventListener('load-tile-set', () => {
+			target.group.position.copy(SWISS_GEOID_ELLIPSOID_OFFSET);
 			this.renderingNeedsUpdate = true;
 		});
 		target.addEventListener('load-content', () => {
@@ -696,6 +721,11 @@ export class ViewerComponent {
 				return tex;
 			});
 		});*/
+
+		// Keep tiles only inside Switzerland.
+		const regionsPlugin = new LoadRegionPlugin();
+		target.registerPlugin(regionsPlugin);
+		regionsPlugin.addRegion(new SwitzerlandRegion(SWITZERLAND_REGION_CAMERA_ELEVATION_THRESHOLD));
 
 		target.setCamera(this.camera);
 		target.setResolutionFromRenderer(this.camera, this.renderer);
@@ -766,31 +796,6 @@ export class ViewerComponent {
 
 			this.renderer.render(this.scene, this.camera);
 		}
-	}
-
-	private isTileInsideSwitzerland(tileBoundingVolume: number[]): boolean {
-		const obbCenter = { x: tileBoundingVolume[0], y: tileBoundingVolume[1], z: tileBoundingVolume[2] };
-		const obbX = { x: tileBoundingVolume[3], y: tileBoundingVolume[4], z: tileBoundingVolume[5] };
-		const obbY = { x: tileBoundingVolume[6], y: tileBoundingVolume[7], z: tileBoundingVolume[8] };
-		const obbZ = { x: tileBoundingVolume[9], y: tileBoundingVolume[10], z: tileBoundingVolume[11] };
-		const obbMinCornerCoords = this.googleTiles.ellipsoid.getPositionToCartographic(
-			REUSABLE_VECTOR3_1.set(obbCenter.x, obbCenter.y, obbCenter.z).sub(obbX).sub(obbY).sub(obbZ),
-			{}
-		);
-		const obbMaxCornerCoords = this.googleTiles.ellipsoid.getPositionToCartographic(
-			REUSABLE_VECTOR3_1.set(obbCenter.x, obbCenter.y, obbCenter.z).add(obbX).add(obbY).add(obbZ),
-			{}
-		);
-		return (
-			obbMinCornerCoords.lon >= SWIZERLAND_BOUNDS[0] &&
-			obbMinCornerCoords.lon <= SWIZERLAND_BOUNDS[2] &&
-			obbMaxCornerCoords.lon >= SWIZERLAND_BOUNDS[0] &&
-			obbMaxCornerCoords.lon <= SWIZERLAND_BOUNDS[2] &&
-			obbMinCornerCoords.lat >= SWIZERLAND_BOUNDS[1] &&
-			obbMinCornerCoords.lat <= SWIZERLAND_BOUNDS[3] &&
-			obbMaxCornerCoords.lat >= SWIZERLAND_BOUNDS[1] &&
-			obbMaxCornerCoords.lat <= SWIZERLAND_BOUNDS[3]
-		);
 	}
 
 	private onWindowResize(): void {
