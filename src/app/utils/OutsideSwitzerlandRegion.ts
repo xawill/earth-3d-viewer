@@ -47,7 +47,7 @@ export class OutsideSwitzerlandRegion extends BaseRegion {
 			return true;
 		} else {
 			let tileInsideSwitzerland = true;
-			for (const p of boundingVolume.obb.points) {
+			for (const p of boundingVolume.obb!.points) {
 				if (!this.obb.containsPoint(REUSABLE_VECTOR3.copy(p).applyMatrix4(this.obb.transform))) {
 					tileInsideSwitzerland = false;
 					break;

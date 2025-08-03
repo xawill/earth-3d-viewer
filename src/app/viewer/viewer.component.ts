@@ -280,7 +280,7 @@ export class ViewerComponent {
 
 		this.initGoogleTileset(this.googleTiles);
 		this.initSwisstopo3DTileset(this.swisstopoBuildingsTiles);
-		this.initSwisstopo3DTileset(this.swisstopoTlmTiles);
+		this.initSwisstopo3DTileset(this.swisstopoTlmTiles); // TODO: Include it with swisstopo terrain tiles; it goes together.
 		this.initSwisstopo3DTileset(this.swisstopoVegetationTiles);
 		//this.initSwisstopo3DTileset(this.swisstopoNamesTiles); // TODO: .vctr format not supported (yet). // TODO: Find most recent tileset (if it even exists?)
 		this.initSwisstopoQuantizedTileset(this.swisstopoTerrainTiles);
@@ -540,7 +540,7 @@ export class ViewerComponent {
 
 		this.earth.add(target.group);
 
-		this.controls.setTilesRenderer(target);
+		this.controls.setEllipsoid(target.ellipsoid, target.group);
 
 		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
 			updateObjectAndChildrenOpacity(o.scene, this.googleTilesOpacity);
@@ -607,7 +607,7 @@ export class ViewerComponent {
 		target.registerPlugin(regionsPlugin);
 		regionsPlugin.addRegion(new SwitzerlandRegion(SWITZERLAND_REGION_CAMERA_ELEVATION_THRESHOLD));
 
-		// Texture with SWISSIMAGE
+		// Texture with SWISSIMAGE // TODO: Do it with the new WMTS image overlay plugin.
 		const TextureOverlayMaterial = TextureOverlayMaterialMixin(MeshBasicMaterial);
 		const overlayPlugin = new TextureOverlayPlugin({
 			textureUpdateCallback: (scene: Object3D, tile: Tile, plugin: TextureOverlayPlugin) => {
@@ -684,8 +684,8 @@ export class ViewerComponent {
 			new XYZTilesPlugin({
 				levels: 29,
 				center: true,
-				shape: 'ellipsoid',
-			} as any) // TODO: Remove any cast when 3d-tiles-renderer types are fixed.
+				projection: 'ellipsoid',
+			})
 		);
 		target.registerPlugin(new UpdateOnChangePlugin());
 
