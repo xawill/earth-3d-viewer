@@ -280,7 +280,7 @@ export class ViewerComponent {
 
 		this.initGoogleTileset(this.googleTiles);
 		this.initSwisstopo3DTileset(this.swisstopoBuildingsTiles);
-		this.initSwisstopo3DTileset(this.swisstopoTlmTiles); // TODO: Include it with swisstopo terrain tiles; it goes together.
+		this.initSwisstopo3DTileset(this.swisstopoTlmTiles);
 		this.initSwisstopo3DTileset(this.swisstopoVegetationTiles);
 		//this.initSwisstopo3DTileset(this.swisstopoNamesTiles); // TODO: .vctr format not supported (yet). // TODO: Find most recent tileset (if it even exists?)
 		this.initSwisstopoQuantizedTileset(this.swisstopoTerrainTiles);
@@ -487,9 +487,6 @@ export class ViewerComponent {
 		}
 		if ($event.swisstopoBuildingsTiles !== undefined && $event.swisstopoBuildingsTiles.enabled !== undefined) {
 			this.swisstopoBuildingsTiles.group.visible = $event.swisstopoBuildingsTiles.enabled;
-		}
-		if ($event.swisstopoTlmTiles !== undefined && $event.swisstopoTlmTiles.enabled !== undefined) {
-			this.swisstopoTlmTiles.group.visible = $event.swisstopoTlmTiles.enabled;
 		}
 		if ($event.swisstopoVegetationTiles !== undefined && $event.swisstopoVegetationTiles.enabled !== undefined) {
 			this.swisstopoVegetationTiles.group.visible = $event.swisstopoVegetationTiles.enabled;
