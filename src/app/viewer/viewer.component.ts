@@ -11,8 +11,6 @@ import {
 	LoadRegionPlugin,
 } from '3d-tiles-renderer/plugins';
 import {
-	AmbientLight,
-	DirectionalLight,
 	Group,
 	Intersection,
 	MathUtils,
@@ -31,16 +29,38 @@ import {
 	MeshStandardMaterial,
 	RGBFormat,
 	DataTexture,
+	HalfFloatType,
+	Clock,
+	NoToneMapping,
+	Matrix4,
 } from 'three';
+import {
+	EffectComposer,
+	EffectMaterial,
+	EffectPass,
+	NormalPass,
+	RenderPass,
+	SMAAEffect,
+	ToneMappingEffect,
+	ToneMappingMode,
+} from 'postprocessing';
+import {
+	AerialPerspectiveEffect,
+	AtmosphereParameters,
+	getMoonDirectionECEF,
+	getSunDirectionECEF,
+	PrecomputedTexturesGenerator,
+} from '@takram/three-atmosphere';
+import { DitheringEffect, LensFlareEffect } from '@takram/three-geospatial-effects';
+import { TileCreasedNormalsPlugin } from '../utils/tiles-utils';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
-import GUI from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { AddressSearchComponent } from '../address-search/address-search.component';
 import { environment } from '../../environments/environment';
 import gsap from 'gsap';
 import { LayersSettingsComponent, LayersSettings } from '../layers-toggle/layers-toggle.component';
-import { pow2Animation, updateObjectAndChildrenOpacity } from '../utils/graphics-utils';
+import { disposeMaterial, pow2Animation, updateObjectAndChildrenOpacity } from '../utils/graphics-utils';
 import { EPS_DECIMALS, round } from '../utils/math-utils';
 import {
 	getUpDirection,
@@ -54,7 +74,8 @@ import { SwitzerlandRegion } from '../utils/SwitzerlandRegion';
 import { OutsideSwitzerlandRegion } from '../utils/OutsideSwitzerlandRegion';
 import { TextureOverlayPlugin } from '../utils/overlays/TextureOverlayPlugin';
 import { TextureOverlayMaterialMixin } from '../utils/overlays/TextureOverlayMaterial';
-import { isMesh } from '../utils/three-type-guards';
+import { hasMaterialColorOrMap, isMesh } from '../utils/three-type-guards';
+import { DebugGui } from '../utils/debug-gui';
 
 const GOOGLE_3D_TILES_TILESET_URL = 'https://tile.googleapis.com/v1/3dtiles/root.json';
 const SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL =
@@ -113,12 +134,19 @@ const REUSABLE_VECTOR3_2 = new Vector3();
 export class ViewerComponent {
 	private scene!: Scene;
 	private renderer!: WebGLRenderer;
+	private composer!: EffectComposer;
 	private camera!: PerspectiveCamera;
 	private controls!: GlobeControls;
 	private raycaster = new Raycaster();
-	private dirLight!: DirectionalLight;
+	private stats = new Stats();
+
 	private earth = new Group();
-	private stats!: Stats;
+	private aerialPerspective!: AerialPerspectiveEffect;
+
+	private sunDirection = new Vector3();
+	private moonDirection = new Vector3();
+
+	private referenceDate = new Date(Date.now()); // TODO: Add UI to set date/time.
 
 	private dracoLoader!: DRACOLoader;
 
@@ -185,13 +213,23 @@ export class ViewerComponent {
 	ngAfterViewInit() {
 		this.scene = new Scene();
 
-		this.renderer = new WebGLRenderer({ antialias: true, canvas: this.canvas.nativeElement });
+		this.renderer = new WebGLRenderer({
+			powerPreference: 'high-performance',
+			antialias: true,
+			stencil: false,
+			depth: true,
+			logarithmicDepthBuffer: false,
+			canvas: this.canvas.nativeElement,
+		});
 		this.renderer.setPixelRatio(window.devicePixelRatio);
 		this.renderer.setSize(window.innerWidth, window.innerHeight);
 		this.renderer.setClearColor(0x151c1f);
 		//this.renderer.localClippingEnabled = true;
+		this.renderer.toneMapping = NoToneMapping;
+		this.renderer.toneMappingExposure = 6;
 		this.renderer.shadowMap.enabled = true;
 		this.renderer.shadowMap.type = PCFSoftShadowMap;
+		// TODO: Properly handle shadows with atmosphere (cast/receive shadows don't seem to work anymore).
 
 		this.camera = new PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, WGS84_RADIUS * 2);
 		//this.scene.add(this.camera);
@@ -238,45 +276,13 @@ export class ViewerComponent {
 			this.areControlsDragging = false;
 		});
 
-		// TODO: Implement proper lighting
-		const ambLight = new AmbientLight(0xffffff, 1);
-		this.scene.add(ambLight);
-
-		this.dirLight = new DirectionalLight(0xffffff, 1.25);
-		this.dirLight.position.set(1, 2, 3).multiplyScalar(40);
-		this.dirLight.castShadow = true;
-		this.dirLight.shadow.bias = -0.01;
-		this.dirLight.shadow.mapSize.setScalar(2048);
-
-		// TODO: Implement shadow cam
-		/*const shadowCam = this.dirLight.shadow.camera;
-		shadowCam.left = - 200;
-		shadowCam.bottom = - 200;
-		shadowCam.right = 200;
-		shadowCam.top = 200;
-		shadowCam.updateProjectionMatrix();*/
-
-		this.scene.add(this.dirLight);
-
 		this.earth.rotateOnWorldAxis(REUSABLE_VECTOR3_1.set(1, 0, 0), -Math.PI / 2);
 		this.earth.rotateOnWorldAxis(REUSABLE_VECTOR3_1.set(0, 1, 0), -Math.PI / 2);
 		//this.earth.add(new AxesHelper(50000000));
 		this.scene.add(this.earth);
 
-		this.stats = new Stats();
 		this.stats.showPanel(0);
 		document.body.appendChild(this.stats.dom);
-
-		/*const gui = new GUI({ width: 300 });
-		gui.add(this.swisstopoTerrainTiles.group.position, 'x', 0, 50).onChange(value => {
-			this.renderingNeedsUpdate = true;
-		});
-		gui.add(this.swisstopoTerrainTiles.group.position, 'y', 0, 20).onChange(value => {
-			this.renderingNeedsUpdate = true;
-		});
-		gui.add(this.swisstopoTerrainTiles.group.position, 'z', 0, 50).onChange(value => {
-			this.renderingNeedsUpdate = true;
-		});*/
 
 		this.initGoogleTileset(this.googleTiles);
 		this.initSwisstopo3DTileset(this.swisstopoBuildingsTiles);
@@ -296,6 +302,8 @@ export class ViewerComponent {
 		window.addEventListener('resize', () => this.onWindowResize(), false);
 
 		this.render();
+
+		this.initAtmosphere();
 	}
 
 	async zoomTo(destination: { coords: google.maps.LatLng; elevation: number }) {
@@ -521,7 +529,10 @@ export class ViewerComponent {
 		);
 		target.registerPlugin(this.googleDebugTilesPlugin);
 		this.googleDebugTilesPlugin.enabled = false;
-		//target.registerPlugin(new TileCompressionPlugin()); // TODO: Needed?
+		target.registerPlugin(new TileCompressionPlugin()); // TODO: Needed?
+		// TODO: Need UpdateOnChangePlugin?
+		// TODO: Use UnloadTilesPlugin
+		target.registerPlugin(new TileCreasedNormalsPlugin());
 
 		const gltfLoader = new GLTFLoader(target.manager);
 		gltfLoader.setDRACOLoader(this.dracoLoader);
@@ -556,7 +567,7 @@ export class ViewerComponent {
 	}
 
 	private initSwisstopo3DTileset(target: TilesRenderer): void {
-		target.errorTarget = 1;
+		target.errorTarget = 10;
 
 		const gltfLoader = new GLTFLoader(target.manager);
 		gltfLoader.setDRACOLoader(this.dracoLoader);
@@ -570,6 +581,45 @@ export class ViewerComponent {
 		target.addEventListener('load-tile-set', (_o: { tileSet?: Object }) => {
 			target.group.position.copy(SWISS_GEOID_ELLIPSOID_OFFSET);
 			this.renderingNeedsUpdate = true;
+		});
+		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
+			o.scene.traverse(child => {
+				if (isMesh(child)) {
+					// Compute missing normals for proper lighting.
+					child.geometry.computeVertexNormals();
+
+					// Use unlit material (MeshBasicMaterial) for proper albedo; required for atmosphere.
+					const originalMaterial = child.material;
+					if (originalMaterial) {
+						if (Array.isArray(originalMaterial)) {
+							originalMaterial.forEach(mat => disposeMaterial(mat));
+						} else {
+							disposeMaterial(originalMaterial);
+
+							if (hasMaterialColorOrMap(originalMaterial)) {
+								child.material = new MeshBasicMaterial({
+									// TODO: Reuse the same material for all objects.
+									color: originalMaterial.color,
+									map: originalMaterial.map,
+								}); // TODO: Texture with random architextures for both facades and roofs (including flat roofs).
+							}
+						}
+					}
+				}
+			});
+			this.renderingNeedsUpdate = true; // TODO: Debounce
+		});
+		target.addEventListener('dispose-model', (o: { scene: Object3D }) => {
+			// Dispose of any manually created materials
+			o.scene.traverse(child => {
+				if (isMesh(child) && child.material) {
+					if (Array.isArray(child.material)) {
+						child.material.forEach(mat => disposeMaterial(mat));
+					} else {
+						disposeMaterial(child.material);
+					}
+				}
+			});
 		});
 		target.addEventListener('needs-update', () => {
 			this.renderingNeedsUpdate = true;
@@ -649,8 +699,6 @@ export class ViewerComponent {
 			this.renderingNeedsUpdate = true;
 		});
 		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
-			o.scene.receiveShadow = true;
-			o.scene.castShadow = true;
 			o.scene.traverse(child => {
 				if (isMesh(child) && child.material) {
 					const originalMaterial = child.material as MeshStandardMaterial;
@@ -668,6 +716,18 @@ export class ViewerComponent {
 				}
 			});
 			this.renderingNeedsUpdate = true; // TODO: Debounce
+		});
+		target.addEventListener('dispose-model', (o: { scene: Object3D }) => {
+			// Dispose of any manually created materials
+			o.scene.traverse(child => {
+				if (isMesh(child) && child.material) {
+					if (Array.isArray(child.material)) {
+						child.material.forEach(mat => disposeMaterial(mat));
+					} else {
+						disposeMaterial(child.material);
+					}
+				}
+			});
 		});
 		target.addEventListener('needs-update', () => {
 			this.renderingNeedsUpdate = true;
@@ -738,9 +798,81 @@ export class ViewerComponent {
 			});*/
 			this.renderingNeedsUpdate = true; // TODO: Debounce
 		});
+		target.addEventListener('dispose-model', (o: { scene: Object3D }) => {
+			// Dispose of any manually created materials
+			o.scene.traverse(child => {
+				if (isMesh(child) && child.material) {
+					if (Array.isArray(child.material)) {
+						child.material.forEach(mat => disposeMaterial(mat));
+					} else {
+						disposeMaterial(child.material);
+					}
+				}
+			});
+		});
 		target.addEventListener('needs-update', () => {
 			this.renderingNeedsUpdate = true;
 		});
+	}
+
+	private initAtmosphere(): void {
+		const atmosphereParameters = AtmosphereParameters.DEFAULT;
+		atmosphereParameters.sunAngularRadius = 0.01;
+		this.aerialPerspective = new AerialPerspectiveEffect(
+			this.camera,
+			{
+				correctAltitude: false,
+				correctGeometricError: true,
+				albedoScale: 2 / Math.PI,
+				transmittance: true,
+				inscatter: true,
+				sunLight: true,
+				skyLight: true,
+				sky: true,
+				sun: true,
+				moon: true,
+				moonAngularRadius: 0.01,
+				lunarRadianceScale: 10, // TODO: Possible to have the moon bring light to scene at night?
+			},
+			atmosphereParameters
+		);
+
+		// TODO: Fix stars which are not visible in the atmosphere effect. Must use StarsMaterial? Or is it related to https://github.com/takram-design-engineering/three-geospatial/issues/28?
+
+		this.aerialPerspective.ellipsoidMatrix.copy(this.earth.matrixWorld).setPosition(0, 0, 0);
+		const inverseEllipsoidMatrix = new Matrix4().copy(this.aerialPerspective.ellipsoidMatrix).invert();
+		this.aerialPerspective.ellipsoidCenter
+			.setFromMatrixPosition(this.earth.matrixWorld)
+			.applyMatrix4(inverseEllipsoidMatrix);
+
+		// Generate precomputed textures.
+		const texturesGenerator = new PrecomputedTexturesGenerator(this.renderer);
+		texturesGenerator.update().catch(error => {
+			console.error(error);
+		});
+		Object.assign(this.aerialPerspective, texturesGenerator.textures);
+
+		this.composer = new EffectComposer(this.renderer, {
+			frameBufferType: HalfFloatType, // Use floating-point render buffer, as radiance/luminance is stored here.
+			multisampling: 0,
+		});
+		this.composer.addPass(new RenderPass(this.scene, this.camera));
+		const normalPass = new NormalPass(this.scene, this.camera);
+		this.aerialPerspective.normalBuffer = normalPass.texture;
+		this.composer.addPass(normalPass);
+		this.composer.addPass(new EffectPass(this.camera, this.aerialPerspective));
+		this.composer.addPass(new EffectPass(this.camera, new LensFlareEffect()));
+		this.composer.addPass(new EffectPass(this.camera, new ToneMappingEffect({ mode: ToneMappingMode.AGX })));
+		this.composer.addPass(new EffectPass(this.camera, new SMAAEffect()));
+		this.composer.addPass(new EffectPass(this.camera, new DitheringEffect()));
+
+		new DebugGui(
+			this.renderer,
+			this.swisstopoTerrainTiles,
+			this.aerialPerspective,
+			this.referenceDate,
+			() => (this.renderingNeedsUpdate = true)
+		);
 	}
 
 	private render(): void {
@@ -751,7 +883,7 @@ export class ViewerComponent {
 		this.stats.update();
 
 		if (this.renderingNeedsUpdate) {
-			//console.log('RENDERING');
+			console.log('RENDERING');
 			this.renderingNeedsUpdate = false;
 
 			this.controls.update();
@@ -779,7 +911,24 @@ export class ViewerComponent {
 				this.swisstopoOrthoimages.update();
 			}
 
-			this.renderer.render(this.scene, this.camera);
+			if (this.aerialPerspective) {
+				this.composer.passes.forEach(pass => {
+					// Update effect materials with current camera settings
+					if (pass.fullscreenMaterial instanceof EffectMaterial) {
+						pass.fullscreenMaterial.adoptCameraSettings(this.camera);
+					}
+				});
+
+				getSunDirectionECEF(this.referenceDate, this.sunDirection);
+				getMoonDirectionECEF(this.referenceDate, this.moonDirection);
+
+				this.aerialPerspective.sunDirection.copy(this.sunDirection);
+				this.aerialPerspective.moonDirection.copy(this.moonDirection);
+
+				this.composer.render();
+			} else {
+				this.renderer.render(this.scene, this.camera);
+			}
 		}
 	}
 
