@@ -821,7 +821,7 @@ export class ViewerComponent {
 		this.aerialPerspective = new AerialPerspectiveEffect(
 			this.camera,
 			{
-				correctAltitude: false,
+				correctAltitude: true,
 				correctGeometricError: true,
 				albedoScale: 2 / Math.PI,
 				transmittance: true,
@@ -861,7 +861,7 @@ export class ViewerComponent {
 		this.aerialPerspective.normalBuffer = normalPass.texture;
 		this.composer.addPass(normalPass);
 		this.composer.addPass(new EffectPass(this.camera, this.aerialPerspective));
-		this.composer.addPass(new EffectPass(this.camera, new LensFlareEffect()));
+		this.composer.addPass(new EffectPass(this.camera, new LensFlareEffect())); // TODO: Looks like it doens't work.
 		this.composer.addPass(new EffectPass(this.camera, new ToneMappingEffect({ mode: ToneMappingMode.AGX })));
 		this.composer.addPass(new EffectPass(this.camera, new SMAAEffect()));
 		this.composer.addPass(new EffectPass(this.camera, new DitheringEffect()));

@@ -19,6 +19,7 @@ export class DebugGui extends GUI {
 		});
 
 		this.add(aerialPerspective, 'albedoScale', 0, 2).onChange(onValueChange);
+		this.add(aerialPerspective, 'correctAltitude').onChange(onValueChange);
 
 		this.add(renderer, 'toneMappingExposure', 0, 100).onChange(onValueChange);
 
