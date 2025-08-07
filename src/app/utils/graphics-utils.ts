@@ -33,3 +33,22 @@ export function disposeMaterial(material: Material): void {
 	}
 	material.dispose();
 }
+
+export function copyMaterialSharedProperties(source: Material, target: Material): void {
+	const sourceKeys = Reflect.ownKeys(source) as (string | symbol)[];
+	const excludedKeys = new Set(['id', 'type', 'uuid']);
+
+	for (const key of sourceKeys) {
+		if (typeof key === 'string' && excludedKeys.has(key)) continue;
+
+		if (key in target) {
+			try {
+				(target as any)[key] = (source as any)[key];
+			} catch (e: any) {
+				console.warn(`Could not assign property ${String(key)}:`, e.message);
+			}
+		}
+	}
+
+	target.needsUpdate = true;
+}

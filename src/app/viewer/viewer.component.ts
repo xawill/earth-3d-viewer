@@ -6,9 +6,10 @@ import {
 	TileCompressionPlugin,
 	DebugTilesPlugin,
 	UpdateOnChangePlugin,
-	XYZTilesPlugin,
 	QuantizedMeshPlugin,
 	LoadRegionPlugin,
+	ImageOverlayPlugin,
+	XYZTilesOverlay,
 } from '3d-tiles-renderer/plugins';
 import {
 	Group,
@@ -24,13 +25,8 @@ import {
 	Object3D,
 	AxesHelper,
 	MeshBasicMaterial,
-	TextureLoader,
-	SRGBColorSpace,
 	MeshStandardMaterial,
-	RGBFormat,
-	DataTexture,
 	HalfFloatType,
-	Clock,
 	NoToneMapping,
 	Matrix4,
 } from 'three';
@@ -72,8 +68,6 @@ import {
 } from '../utils/map-utils';
 import { SwitzerlandRegion } from '../utils/SwitzerlandRegion';
 import { OutsideSwitzerlandRegion } from '../utils/OutsideSwitzerlandRegion';
-import { TextureOverlayPlugin } from '../utils/overlays/TextureOverlayPlugin';
-import { TextureOverlayMaterialMixin } from '../utils/overlays/TextureOverlayMaterial';
 import { hasMaterialColorOrMap, isMesh } from '../utils/three-type-guards';
 import { DebugGui } from '../utils/debug-gui';
 
@@ -85,10 +79,8 @@ const SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL = 'https://3d.geo.admin.ch/ch.sw
 const SWISSTOPO_NAMES_3D_TILES_TILESET_URL =
 	'https://3d.geo.admin.ch/3d-tiles/ch.swisstopo.swissnames3d.3d/20180716/tileset.json';
 const SWISSTOPO_TERRAIN_3D_TILES_TILESET_URL = 'https://3d.geo.admin.ch/ch.swisstopo.terrain.3d/v1/layer.json';
-const SWISSTOPO_SWISSIMAGE_WMTS_4326_URL =
-	'https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/4326/{z}/{x}/{y}.jpeg'; // Max zoom level is 19
-const SWISSTOPO_ORTHOIMAGES_XYZ_URL =
-	'https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg';
+const SWISSTOPO_SWISSIMAGE_XYZ_URL =
+	'https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg'; // Max zoom level is 20. To test/debug tiles indexing: https://codepen.io/procrastinatio/pen/BgaGWZ
 
 const DEFAULT_START_COORDS: LatLng = { lat: 46.516591, lng: 6.629047 };
 const HEIGHT_FULL_GLOBE_VISIBLE = 7000000;
@@ -167,7 +159,6 @@ export class ViewerComponent {
 	private swisstopoVegetationTiles = new TilesRenderer(SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL);
 	private swisstopoNamesTiles = new TilesRenderer(SWISSTOPO_NAMES_3D_TILES_TILESET_URL);
 	private swisstopoTerrainTiles = new TilesRenderer(SWISSTOPO_TERRAIN_3D_TILES_TILESET_URL);
-	private swisstopoOrthoimages = new TilesRenderer(SWISSTOPO_ORTHOIMAGES_XYZ_URL);
 
 	private googleDebugTilesPlugin = new DebugTilesPlugin({
 		maxDebugError: 100,
@@ -237,8 +228,8 @@ export class ViewerComponent {
 		this.controls = new GlobeControls(this.scene, this.camera, this.renderer.domElement);
 		this.controls.enableDamping = false;
 		this.controls.adjustHeight = false;
-		this.controls.maxAltitude = MathUtils.degToRad(75);
-		this.controls.minDistance = 40;
+		this.controls.maxAltitude = MathUtils.degToRad(90);
+		this.controls.minDistance = 0;
 
 		this.controls.addEventListener('start', () => {
 			if (this.zoomToCoordsAnimationTl.isActive()) {
@@ -290,7 +281,6 @@ export class ViewerComponent {
 		this.initSwisstopo3DTileset(this.swisstopoVegetationTiles);
 		//this.initSwisstopo3DTileset(this.swisstopoNamesTiles); // TODO: .vctr format not supported (yet). // TODO: Find most recent tileset (if it even exists?)
 		this.initSwisstopoQuantizedTileset(this.swisstopoTerrainTiles);
-		//this.initSwisstopoXYZTileset(this.swisstopoOrthoimages); // Removed, as this is now included in the textured Quantized mesh terrain
 
 		// Set init camera position
 		this.currentPosition.lon = DEFAULT_START_COORDS.lng * MathUtils.DEG2RAD;
@@ -654,40 +644,22 @@ export class ViewerComponent {
 		target.registerPlugin(regionsPlugin);
 		regionsPlugin.addRegion(new SwitzerlandRegion(SWITZERLAND_REGION_CAMERA_ELEVATION_THRESHOLD));
 
-		// Texture with SWISSIMAGE // TODO: Do it with the new WMTS image overlay plugin.
-		const TextureOverlayMaterial = TextureOverlayMaterialMixin(MeshBasicMaterial);
-		const overlayPlugin = new TextureOverlayPlugin({
-			textureUpdateCallback: (scene: Object3D, tile: Tile, plugin: TextureOverlayPlugin) => {
-				scene.traverse(child => {
-					if (isMesh(child)) {
-						const material = child.material as any;
-						material.textures = Object.values(plugin.getTexturesForTile(tile));
-						material.displayAsOverlay = false;
-						material.needsUpdate = true;
-					}
-				});
-			},
-			waitForLoadCompletion: false,
-		});
-		target.registerPlugin(overlayPlugin);
-		overlayPlugin.registerLayer('swissimage', async (tileUrl: string) => {
-			// TODO: It looks like swissimage is only loaded at zoom level 16 max, even if available at 19. So probably terrain tiles are only available up to level 16. In that case, let's stick higher res' swissimage tiles together
-			// TODO: Try to texture with native swissimage in EPSG:21781, so that we can go up to level 28
-			// Check EPSG:4326 tiles idx for debugging here: https://codepen.io/procrastinatio/pen/BgaGWZ
-			const [, z, x, y] = tileUrl.match(/\/(\d+)\/(\d+)\/(\d+)\.terrain/)!;
-			const wmtsFlippedY = Math.pow(2, parseInt(z)) - 1 - parseInt(y);
-			const swissimageUrl = SWISSTOPO_SWISSIMAGE_WMTS_4326_URL.replace('{z}', z)
-				.replace('{x}', x)
-				.replace('{y}', wmtsFlippedY.toString());
-			return new TextureLoader()
-				.loadAsync(swissimageUrl)
-				.then(tex => {
-					tex.colorSpace = SRGBColorSpace;
-					tex.flipY = true;
-					return tex;
-				})
-				.catch(_ => {});
-		});
+		// Texture with SWISSIMAGE // TODO: This ImageOverlayPlugin new approach seems to be less performant than with TextureOverlayPlugin. Considering reverting...
+		target.registerPlugin(
+			new ImageOverlayPlugin({
+				renderer: this.renderer,
+				enableTileSplitting: true,
+				overlays: [
+					new XYZTilesOverlay({
+						url: SWISSTOPO_SWISSIMAGE_XYZ_URL,
+						levels: 20,
+						dimension: 256,
+						color: 0xffffff,
+						opacity: 1,
+					}),
+				],
+			})
+		);
 
 		target.setCamera(this.camera);
 		target.setResolutionFromRenderer(this.camera, this.renderer);
@@ -700,102 +672,24 @@ export class ViewerComponent {
 		});
 		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
 			o.scene.traverse(child => {
-				if (isMesh(child) && child.material) {
-					const originalMaterial = child.material as MeshStandardMaterial;
-					const edgeSize = 256; // [pixels]
-					originalMaterial.map = new DataTexture(
-						new Uint8Array(edgeSize * edgeSize * 3),
-						edgeSize,
-						edgeSize,
-						RGBFormat
-					); // Size: 3 channels (R, G, B)
-
-					const newMaterial = new TextureOverlayMaterial() as any;
-					newMaterial.copy(originalMaterial);
-					child.material = newMaterial;
-				}
-			});
-			this.renderingNeedsUpdate = true; // TODO: Debounce
-		});
-		target.addEventListener('dispose-model', (o: { scene: Object3D }) => {
-			// Dispose of any manually created materials
-			o.scene.traverse(child => {
-				if (isMesh(child) && child.material) {
-					if (Array.isArray(child.material)) {
-						child.material.forEach(mat => disposeMaterial(mat));
-					} else {
-						disposeMaterial(child.material);
-					}
-				}
-			});
-		});
-		target.addEventListener('needs-update', () => {
-			this.renderingNeedsUpdate = true;
-		});
-	}
-
-	private initSwisstopoXYZTileset(target: TilesRenderer): void {
-		target.errorTarget = 1;
-
-		target.registerPlugin(
-			new XYZTilesPlugin({
-				levels: 29,
-				center: true,
-				projection: 'ellipsoid',
-			})
-		);
-		target.registerPlugin(new UpdateOnChangePlugin());
-
-		// Experiment texture overlay with other Switzerland raster map
-		/*const TextureOverlayMaterial = TextureOverlayMaterialMixin(MeshBasicMaterial);
-		const overlayPlugin = new TextureOverlayPlugin({
-			textureUpdateCallback: (scene: Object3D, tile: Tile, plugin: TextureOverlayPlugin) => {
-				scene.traverse(child => {
-					if (isMesh(child) && child.material) {
-						const material = child.material as any;
-						material.textures = Object.values(plugin.getTexturesForTile(tile));
-						material.displayAsOverlay = false;
-						material.needsUpdate = true;
-					}
-				});
-			},
-		});
-		target.registerPlugin(overlayPlugin);
-		overlayPlugin.registerLayer('pixelkarte', async (tileUrl: string) => {
-			const url = tileUrl.replace('ch.swisstopo.swissimage', 'ch.swisstopo.pixelkarte-farbe');
-			return new TextureLoader().loadAsync(url).then(tex => {
-				tex.colorSpace = SRGBColorSpace;
-				tex.flipY = true;
-				return tex;
-			});
-		});*/
-
-		// Keep tiles only inside Switzerland.
-		const regionsPlugin = new LoadRegionPlugin();
-		target.registerPlugin(regionsPlugin);
-		regionsPlugin.addRegion(new SwitzerlandRegion(SWITZERLAND_REGION_CAMERA_ELEVATION_THRESHOLD));
-
-		target.setCamera(this.camera);
-		target.setResolutionFromRenderer(this.camera, this.renderer);
-
-		this.earth.add(target.group);
-
-		target.addEventListener('load-tile-set', (_o: { tileSet?: Object }) => {
-			// We empirically find the approximate offset with Google Photorealistic 3D Tiles at Gare de Vevey to have them more or less aligned.
-			target.group.position.x = 300;
-			target.group.position.y = 30;
-			target.group.position.z = 325;
-			this.renderingNeedsUpdate = true;
-		});
-		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
-			/*o.scene.traverse(child => {
 				if (isMesh(child)) {
-					const originalMaterial = child.material as MeshBasicMaterial;
-					const newMaterial = new TextureOverlayMaterial() as any;
-					newMaterial.copy(originalMaterial);
-					child.material = newMaterial;
+					// We need to Use unlit material (e.g. MeshBasicMaterial) for proper albedo; required for atmosphere. However, ImageOverlayPlugin uses a StandardMeshMaterial with onBeforeCompile we cannot really migrate to a MeshBasicMaterial. So we keep the original material and just make it not affected by light.
+					if (!Array.isArray(child.material)) {
+						const originalOnBeforeCompile = child.material.onBeforeCompile;
+						child.material.onBeforeCompile = shader => {
+							originalOnBeforeCompile(shader, this.renderer);
+
+							// Override final outgoing light with albedo color only (no lighting)
+							shader.fragmentShader = shader.fragmentShader.replace(
+								/vec3 outgoingLight = totalDiffuse \+ totalSpecular \+ totalEmissiveRadiance;/,
+								'vec3 outgoingLight = diffuseColor.rgb;'
+							);
+						};
+
+						child.material.needsUpdate = true;
+					}
 				}
-			});*/
+			});
 			this.renderingNeedsUpdate = true; // TODO: Debounce
 		});
 		target.addEventListener('dispose-model', (o: { scene: Object3D }) => {
@@ -906,9 +800,6 @@ export class ViewerComponent {
 			}
 			if (this.swisstopoTerrainTiles.hasCamera(this.camera) && this.swisstopoTerrainTiles.group.visible) {
 				this.swisstopoTerrainTiles.update();
-			}
-			if (this.swisstopoOrthoimages.hasCamera(this.camera) && this.swisstopoOrthoimages.group.visible) {
-				this.swisstopoOrthoimages.update();
 			}
 
 			if (this.aerialPerspective) {
