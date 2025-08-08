@@ -23,12 +23,17 @@ import {
 	Vector3,
 	WebGLRenderer,
 	Object3D,
-	AxesHelper,
 	MeshBasicMaterial,
 	MeshStandardMaterial,
 	HalfFloatType,
 	NoToneMapping,
 	Matrix4,
+	Mesh,
+	RepeatWrapping,
+	BufferAttribute,
+	Material,
+	Color,
+	SRGBColorSpace,
 } from 'three';
 import {
 	EffectComposer,
@@ -48,7 +53,7 @@ import {
 	PrecomputedTexturesGenerator,
 } from '@takram/three-atmosphere';
 import { DitheringEffect, LensFlareEffect } from '@takram/three-geospatial-effects';
-import { TileCreasedNormalsPlugin } from '../utils/tiles-utils';
+import { disposeManuallyCreatedMaterials, TileCreasedNormalsPlugin } from '../utils/tiles-utils';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -56,7 +61,14 @@ import { AddressSearchComponent } from '../address-search/address-search.compone
 import { environment } from '../../environments/environment';
 import gsap from 'gsap';
 import { LayersSettingsComponent, LayersSettings } from '../layers-toggle/layers-toggle.component';
-import { disposeMaterial, pow2Animation, updateObjectAndChildrenOpacity } from '../utils/graphics-utils';
+import {
+	colorsAreAlmostEqual,
+	disposeMaterial,
+	pow2Animation,
+	removeLightingFromMaterial,
+	TEXTURE_LOADER,
+	updateObjectAndChildrenOpacity,
+} from '../utils/graphics-utils';
 import { EPS_DECIMALS, round } from '../utils/math-utils';
 import {
 	getUpDirection,
@@ -116,6 +128,106 @@ const ZOOM_LEVEL_COLORS_DEBUG = [
 const REUSABLE_VECTOR2 = new Vector2();
 const REUSABLE_VECTOR3_1 = new Vector3();
 const REUSABLE_VECTOR3_2 = new Vector3();
+const REUSABLE_VECTOR3_3 = new Vector3();
+
+const BUILDING_MATERIALS = [
+	'architextures/aluminium-stack-1219-mm-architextures.jpg',
+	'architextures/basalt-stack-2835-mm-architextures.jpg',
+	'architextures/bembridge-antique-staggered-675-mm-architextures.jpg',
+	'architextures/blue-majolica-tile-stack-268-mm-architextures.jpg',
+	'architextures/blundell-staggered-1320-mm-architextures.jpg',
+	'architextures/boardmarked-concrete-staggered-2002-mm-architextures.jpg',
+	'architextures/buff-flemish-675-mm-architextures.jpg',
+	'architextures/calacatta-vena-hexagonal-1617-mm-architextures.jpg',
+	'architextures/concrete-european-fan-5955-mm-architextures.jpg',
+	'architextures/corrugated-aluminium-3000-mm-architextures.jpg',
+	'architextures/crazing-tile-hexagonal-1536-mm-architextures.jpg',
+	'architextures/crazing-tile-stack-612-mm-architextures-2.jpg',
+	'architextures/crazing-tile-stack-612-mm-architextures.jpg',
+	'architextures/crazing-tile-triangle-610-mm-architextures.jpg',
+	'architextures/dragfaced-brick-common-2700-mm-architextures.jpg',
+	'architextures/dragfaced-brick-stretcher-2250-mm-architextures.jpg',
+	'architextures/drill-marked-granite-drystone-1118-mm-architextures.jpg',
+	'architextures/embossed-plaster-1500-mm-architextures.jpg',
+	'architextures/even-drag-brick-basketweave-1320-mm-architextures.jpg',
+	'architextures/even-drag-brick-stretcher-1435-mm-architextures.jpg',
+	'architextures/even-drag-brick-stretcher-4100-mm-architextures.jpg',
+	'architextures/exposed-aggregate-2996-mm-architextures.jpg',
+	'architextures/fine-bush-hammered-concrete-2500-mm-architextures.jpg',
+	'architextures/flagstone-rubble-1948-mm-architextures.jpg',
+	'architextures/flamed-royal-white-granite-300-mm-architextures.jpg',
+	'architextures/granite-crazy-paving-1045-mm-architextures.jpg',
+	'architextures/granite-herringbone-1145-mm-architextures.jpg',
+	'architextures/granite-rounded-rubble-749-mm-architextures.jpg',
+	'architextures/granite-stack-2730-mm-architextures.jpg',
+	'architextures/granite-stack-3630-mm-architextures.jpg',
+	'architextures/granite-stretcher-2420-mm-architextures.jpg',
+	'architextures/green-crazing-tile-leaf-pattern-1920-mm-architextures.jpg',
+	'architextures/grey-victorian-tile-stack-912-mm-architextures.jpg',
+	'architextures/in-situ-concrete-3996-mm-architextures.jpg',
+	'architextures/industrial-brick-common-940-mm-architextures.jpg',
+	'architextures/inkstone-seashell-mosaic-stack-309-mm-architextures.jpg',
+	'architextures/ivory-cedar--walnut-2400-mm-architextures.jpg',
+	'architextures/limestone-crazy-paving-1049-mm-architextures.jpg',
+	'architextures/marble-800-mm-architextures.jpg',
+	'architextures/marmoreal-3000-mm-architextures.jpg',
+	'architextures/marmoreal-stretcher-1204-mm-architextures.jpg',
+	'architextures/matte-stack-2100-mm-architextures.jpg',
+	'architextures/metro-tile-stretcher-1230-mm-architextures.jpg',
+	'architextures/mono-terrazzo-stack-1220-mm-architextures.jpg',
+	'architextures/moss-300-mm-architextures.jpg',
+	'architextures/orange-marble-2500-mm-architextures.jpg',
+	'architextures/oscuro-terrazzo-1750-mm-architextures.jpg',
+	'architextures/pilotage-stack-1819-mm-architextures.jpg',
+	'architextures/pinstripe-glazed-tile-intersecting-circle-1211-mm-architextures.jpg',
+	'architextures/rough-limestone-ashlar-1508-mm-architextures.jpg',
+	'architextures/slate-ashlar-1796-mm-architextures.jpg',
+	'architextures/slate-staggered-2010-mm-architextures.jpg',
+	'architextures/stones-1248-mm-architextures.jpg',
+	'architextures/suyaki-ebony-stretcher-2910-mm-architextures.jpg',
+	'architextures/textured-plaster-1248-mm-architextures.jpg',
+	'architextures/verde-alpi-marble-varied-terrazzo-903-mm-architextures.jpg',
+	'architextures/victorian-glazed-fishscale-1020-mm-architextures.jpg',
+	'architextures/victorian-glazed-stack-1020-mm-architextures.jpg',
+	'architextures/victorian-glazed-stack-804-mm-architextures.jpg',
+	'architextures/weathered-timber-3935-mm-architextures.jpg',
+	'architextures/weathered-timber-staggered-2700-mm-architextures.jpg',
+].map(url =>
+	TEXTURE_LOADER.loadAsync(url).then(texture => {
+		texture.colorSpace = SRGBColorSpace;
+		texture.wrapS = texture.wrapT = RepeatWrapping;
+
+		// Use unlit material (MeshBasicMaterial) for proper albedo; required for atmosphere.
+		return new MeshBasicMaterial({
+			map: texture,
+		});
+	})
+);
+const FACADE_UP = new Vector3(0, 0, 1);
+const SWISSBUILDINGS3D_FACADE_COLOR = new Color(0.886, 0.851, 0.565); // Found empirically.
+
+const TREE_FOLIAGE_MATERIAL = TEXTURE_LOADER.loadAsync('tree-foliage.jpg').then(texture => {
+	texture.colorSpace = SRGBColorSpace;
+	texture.wrapS = texture.wrapT = RepeatWrapping;
+
+	// Use unlit material (MeshBasicMaterial) for proper albedo; required for atmosphere.
+	return new MeshBasicMaterial({
+		map: texture,
+	});
+});
+const TREE_TRUNK_MATERIAL = TEXTURE_LOADER.loadAsync('tree-trunk.jpg').then(texture => {
+	texture.colorSpace = SRGBColorSpace;
+	texture.wrapS = texture.wrapT = RepeatWrapping;
+
+	// Use unlit material (MeshBasicMaterial) for proper albedo; required for atmosphere.
+	return new MeshBasicMaterial({
+		map: texture,
+	});
+});
+
+const SWISSTOPO_TLM_MATERIAL = new MeshBasicMaterial({
+	color: 0xb9b0aa,
+});
 
 @Component({
 	selector: 'app-viewer',
@@ -269,16 +381,98 @@ export class ViewerComponent {
 
 		this.earth.rotateOnWorldAxis(REUSABLE_VECTOR3_1.set(1, 0, 0), -Math.PI / 2);
 		this.earth.rotateOnWorldAxis(REUSABLE_VECTOR3_1.set(0, 1, 0), -Math.PI / 2);
-		//this.earth.add(new AxesHelper(50000000));
 		this.scene.add(this.earth);
 
 		this.stats.showPanel(0);
 		document.body.appendChild(this.stats.dom);
 
 		this.initGoogleTileset(this.googleTiles);
-		this.initSwisstopo3DTileset(this.swisstopoBuildingsTiles);
-		this.initSwisstopo3DTileset(this.swisstopoTlmTiles);
-		this.initSwisstopo3DTileset(this.swisstopoVegetationTiles);
+		this.initSwisstopo3DTileset(
+			this.swisstopoBuildingsTiles,
+			async (mesh: Mesh) => {
+				// Texture the facades with a random texture and the roofs with swissimage (already applied by ImageOverlayPlugin).
+
+				const originalMaterial = mesh.material as Material;
+
+				const isFacade =
+					hasMaterialColorOrMap(originalMaterial) &&
+					colorsAreAlmostEqual(originalMaterial.color!, SWISSBUILDINGS3D_FACADE_COLOR);
+				if (isFacade) {
+					// Ensure UVs are set.
+					const positions = mesh.geometry.getAttribute('position') as BufferAttribute;
+					const normals = mesh.geometry.getAttribute('normal') as BufferAttribute;
+
+					let uvs = mesh.geometry.getAttribute('uv') as BufferAttribute;
+					if (!uvs) {
+						uvs = new BufferAttribute(new Float32Array(positions.count * 2), 2);
+						mesh.geometry.setAttribute('uv', uvs);
+					}
+					for (let vertexIdx = 0; vertexIdx < positions.count; vertexIdx++) {
+						const position = REUSABLE_VECTOR3_1.fromBufferAttribute(positions, vertexIdx);
+						const normal = REUSABLE_VECTOR3_2.fromBufferAttribute(normals, vertexIdx);
+						const facadeDirection = REUSABLE_VECTOR3_3.crossVectors(FACADE_UP, normal).normalize();
+						uvs.setXY(vertexIdx, position.dot(facadeDirection), position.z); // NB: z is up, since this is a facade.
+					}
+
+					// Properly dispose of original material.
+					const originalMaterial = mesh.material as Material;
+					if (originalMaterial) {
+						if (Array.isArray(originalMaterial)) {
+							originalMaterial.forEach(mat => disposeMaterial(mat));
+						} else {
+							disposeMaterial(originalMaterial);
+						}
+					}
+
+					const randomMaterial =
+						await BUILDING_MATERIALS[Math.floor(Math.random() * BUILDING_MATERIALS.length)];
+					mesh.material = randomMaterial;
+				} else {
+					// We need to use unlit material (e.g. MeshBasicMaterial) for proper albedo; required for atmosphere. However, ImageOverlayPlugin uses a StandardMeshMaterial with onBeforeCompile we cannot really migrate to a MeshBasicMaterial. So we keep the original material and just make it not affected by light.
+					removeLightingFromMaterial(mesh.material as MeshStandardMaterial, this.renderer);
+				}
+			},
+			true
+		);
+		this.initSwisstopo3DTileset(this.swisstopoTlmTiles, async (mesh: Mesh) => {
+			// Having all objects share the same material. Also making sure that the material is unlit for proper rendering with atmosphere support.
+			// TODO: In the original dataset, different colors are applied to different structures. Let's try to find a way to recover them while still reusing the different materials.
+			// TODO: Even better: texture with SWISSIMAGE (once performance issues are solved).
+			const originalMaterial = mesh.material as MeshStandardMaterial;
+
+			// Properly dispose of original material.
+			if (originalMaterial) {
+				if (Array.isArray(originalMaterial)) {
+					originalMaterial.forEach(mat => disposeMaterial(mat));
+				} else {
+					disposeMaterial(originalMaterial);
+				}
+			}
+
+			mesh.material = SWISSTOPO_TLM_MATERIAL;
+		});
+		this.initSwisstopo3DTileset(this.swisstopoVegetationTiles, async (mesh: Mesh) => {
+			// Texture the trees with the same shared material.
+			// TODO: Properly implement InstancedMesh, as there are clearly too many trees objects in the scene (is InstancedMesh really used!?). o.scene has two children (foliage + trunk).
+
+			const originalMaterial = mesh.material as MeshStandardMaterial;
+			const textureWidth = originalMaterial.map?.source.data.width;
+
+			// Properly dispose of original material.
+			if (originalMaterial) {
+				if (Array.isArray(originalMaterial)) {
+					originalMaterial.forEach(mat => disposeMaterial(mat));
+				} else {
+					disposeMaterial(originalMaterial);
+				}
+			}
+
+			if (textureWidth === 81) {
+				mesh.material = await TREE_FOLIAGE_MATERIAL;
+			} else {
+				mesh.material = await TREE_TRUNK_MATERIAL;
+			}
+		});
 		//this.initSwisstopo3DTileset(this.swisstopoNamesTiles); // TODO: .vctr format not supported (yet). // TODO: Find most recent tileset (if it even exists?)
 		this.initSwisstopoQuantizedTileset(this.swisstopoTerrainTiles);
 
@@ -542,7 +736,7 @@ export class ViewerComponent {
 
 		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
 			updateObjectAndChildrenOpacity(o.scene, this.googleTilesOpacity);
-			this.renderingNeedsUpdate = true; // TODO: Debounce
+			this.renderingNeedsUpdate = true; // TODO: Needed?
 		});
 		target.addEventListener('tile-visibility-change', (o: { scene: Object3D; tile: Tile; visible: boolean }) => {
 			if (o.scene) {
@@ -556,8 +750,30 @@ export class ViewerComponent {
 		});
 	}
 
-	private initSwisstopo3DTileset(target: TilesRenderer): void {
+	private initSwisstopo3DTileset(
+		target: TilesRenderer,
+		meshCustomizationCallback?: (mesh: Mesh) => void,
+		overlaySwissimage = false
+	): void {
 		target.errorTarget = 10;
+
+		if (overlaySwissimage) {
+			target.registerPlugin(
+				new ImageOverlayPlugin({
+					renderer: this.renderer,
+					enableTileSplitting: true,
+					overlays: [
+						new XYZTilesOverlay({
+							url: SWISSTOPO_SWISSIMAGE_XYZ_URL,
+							levels: 20,
+							dimension: 256,
+							color: 0xffffff,
+							opacity: 1,
+						}),
+					],
+				})
+			);
+		}
 
 		const gltfLoader = new GLTFLoader(target.manager);
 		gltfLoader.setDRACOLoader(this.dracoLoader);
@@ -578,42 +794,15 @@ export class ViewerComponent {
 					// Compute missing normals for proper lighting.
 					child.geometry.computeVertexNormals();
 
-					// Use unlit material (MeshBasicMaterial) for proper albedo; required for atmosphere.
-					const originalMaterial = child.material;
-					if (originalMaterial) {
-						if (Array.isArray(originalMaterial)) {
-							originalMaterial.forEach(mat => disposeMaterial(mat));
-						} else {
-							disposeMaterial(originalMaterial);
-
-							if (hasMaterialColorOrMap(originalMaterial)) {
-								child.material = new MeshBasicMaterial({
-									// TODO: Reuse the same material for all objects.
-									color: originalMaterial.color,
-									map: originalMaterial.map,
-								}); // TODO: Texture with random architextures for both facades and roofs (including flat roofs).
-							}
-						}
+					// Give a chance to caller to run customizations on the mesh.
+					if (meshCustomizationCallback) {
+						meshCustomizationCallback(child);
 					}
 				}
 			});
-			this.renderingNeedsUpdate = true; // TODO: Debounce
+			this.renderingNeedsUpdate = true; // TODO: Needed?
 		});
-		target.addEventListener('dispose-model', (o: { scene: Object3D }) => {
-			// Dispose of any manually created materials
-			o.scene.traverse(child => {
-				if (isMesh(child) && child.material) {
-					if (Array.isArray(child.material)) {
-						child.material.forEach(mat => disposeMaterial(mat));
-					} else {
-						disposeMaterial(child.material);
-					}
-				}
-			});
-		});
-		target.addEventListener('needs-update', () => {
-			this.renderingNeedsUpdate = true;
-		});
+		target.addEventListener('dispose-model', (o: { scene: Object3D }) => disposeManuallyCreatedMaterials(o.scene));
 	}
 
 	private initSwisstopoQuantizedTileset(target: TilesRenderer): void {
@@ -644,7 +833,7 @@ export class ViewerComponent {
 		target.registerPlugin(regionsPlugin);
 		regionsPlugin.addRegion(new SwitzerlandRegion(SWITZERLAND_REGION_CAMERA_ELEVATION_THRESHOLD));
 
-		// Texture with SWISSIMAGE // TODO: This ImageOverlayPlugin new approach seems to be less performant than with TextureOverlayPlugin. Considering reverting...
+		// Texture with SWISSIMAGE // TODO: This ImageOverlayPlugin new approach seams to be less performant than with TextureOverlayPlugin. Considering reverting...
 		target.registerPlugin(
 			new ImageOverlayPlugin({
 				renderer: this.renderer,
@@ -674,33 +863,7 @@ export class ViewerComponent {
 			o.scene.traverse(child => {
 				if (isMesh(child)) {
 					// We need to Use unlit material (e.g. MeshBasicMaterial) for proper albedo; required for atmosphere. However, ImageOverlayPlugin uses a StandardMeshMaterial with onBeforeCompile we cannot really migrate to a MeshBasicMaterial. So we keep the original material and just make it not affected by light.
-					if (!Array.isArray(child.material)) {
-						const originalOnBeforeCompile = child.material.onBeforeCompile;
-						child.material.onBeforeCompile = shader => {
-							originalOnBeforeCompile(shader, this.renderer);
-
-							// Override final outgoing light with albedo color only (no lighting)
-							shader.fragmentShader = shader.fragmentShader.replace(
-								/vec3 outgoingLight = totalDiffuse \+ totalSpecular \+ totalEmissiveRadiance;/,
-								'vec3 outgoingLight = diffuseColor.rgb;'
-							);
-						};
-
-						child.material.needsUpdate = true;
-					}
-				}
-			});
-			this.renderingNeedsUpdate = true; // TODO: Debounce
-		});
-		target.addEventListener('dispose-model', (o: { scene: Object3D }) => {
-			// Dispose of any manually created materials
-			o.scene.traverse(child => {
-				if (isMesh(child) && child.material) {
-					if (Array.isArray(child.material)) {
-						child.material.forEach(mat => disposeMaterial(mat));
-					} else {
-						disposeMaterial(child.material);
-					}
+					removeLightingFromMaterial(child.material as MeshStandardMaterial, this.renderer);
 				}
 			});
 		});

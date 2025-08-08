@@ -9,5 +9,10 @@
 		"/Users/xavier/.vscode/extensions/joedevivo.vscode-circuitpython-0.2.0-darwin-arm64/stubs",
 		"/Users/xavier/Library/Application Support/Code/User/globalStorage/joedevivo.vscode-circuitpython/bundle/20240904/adafruit-circuitpython-bundle-py-20240904/lib"
 	],
-	"circuitpython.board.version": null
+	"circuitpython.board.version": null,
+	"editor.formatOnPaste": true,
+	"editor.formatOnSave": true,
+	"editor.formatOnType": true,
+	"notebook.formatOnSave.enabled": true,
+	"dotnet.formatting.organizeImportsOnFormat": false
 }
