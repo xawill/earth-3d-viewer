@@ -387,6 +387,19 @@ export class ViewerComponent {
 		this.stats.showPanel(0);
 		document.body.appendChild(this.stats.dom);
 
+		// Since we share the cache between swisstopo tiles renderers, we need to increase its size.
+		const cacheSizeMultiplier = 6;
+		this.swisstopoBuildingsTiles.lruCache.maxSize =
+			Number(this.swisstopoBuildingsTiles.lruCache.maxSize) * cacheSizeMultiplier;
+		this.swisstopoBuildingsTiles.lruCache.minSize =
+			Number(this.swisstopoBuildingsTiles.lruCache.minSize) * cacheSizeMultiplier;
+		this.swisstopoBuildingsTiles.lruCache.maxBytesSize =
+			Number(this.swisstopoBuildingsTiles.lruCache.maxBytesSize) * cacheSizeMultiplier;
+		this.swisstopoBuildingsTiles.lruCache.minBytesSize =
+			Number(this.swisstopoBuildingsTiles.lruCache.minBytesSize) * cacheSizeMultiplier;
+		this.swisstopoBuildingsTiles.lruCache.unloadPercent =
+			Number(this.swisstopoBuildingsTiles.lruCache.unloadPercent) * cacheSizeMultiplier;
+
 		this.initGoogleTileset(this.googleTiles);
 		this.initSwisstopo3DTileset(
 			this.swisstopoBuildingsTiles,
@@ -784,6 +797,12 @@ export class ViewerComponent {
 
 		target.setCamera(this.camera);
 		target.setResolutionFromRenderer(this.camera, this.renderer);
+
+		// Share caches and queues between swisstopo tiles renderers
+		target.lruCache = this.swisstopoBuildingsTiles.lruCache;
+		target.downloadQueue = this.swisstopoBuildingsTiles.downloadQueue;
+		target.parseQueue = this.swisstopoBuildingsTiles.parseQueue;
+		target.processNodeQueue = this.swisstopoBuildingsTiles.processNodeQueue;
 
 		this.earth.add(target.group);
 
