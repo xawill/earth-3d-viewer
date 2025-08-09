@@ -10,6 +10,7 @@ import {
 	LoadRegionPlugin,
 	ImageOverlayPlugin,
 	XYZTilesOverlay,
+	UnloadTilesPlugin,
 } from '3d-tiles-renderer/plugins';
 import {
 	Group,
@@ -389,6 +390,7 @@ export class ViewerComponent {
 		this.initGoogleTileset(this.googleTiles);
 		this.initSwisstopo3DTileset(
 			this.swisstopoBuildingsTiles,
+			30,
 			async (mesh: Mesh) => {
 				// Texture the facades with a random texture and the roofs with swissimage (already applied by ImageOverlayPlugin).
 
@@ -434,7 +436,7 @@ export class ViewerComponent {
 			},
 			true
 		);
-		this.initSwisstopo3DTileset(this.swisstopoTlmTiles, async (mesh: Mesh) => {
+		this.initSwisstopo3DTileset(this.swisstopoTlmTiles, 1, async (mesh: Mesh) => {
 			// Having all objects share the same material. Also making sure that the material is unlit for proper rendering with atmosphere support.
 			// TODO: In the original dataset, different colors are applied to different structures. Let's try to find a way to recover them while still reusing the different materials.
 			// TODO: Even better: texture with SWISSIMAGE (once performance issues are solved).
@@ -451,7 +453,7 @@ export class ViewerComponent {
 
 			mesh.material = SWISSTOPO_TLM_MATERIAL;
 		});
-		this.initSwisstopo3DTileset(this.swisstopoVegetationTiles, async (mesh: Mesh) => {
+		this.initSwisstopo3DTileset(this.swisstopoVegetationTiles, 8, async (mesh: Mesh) => {
 			// Texture the trees with the same shared material.
 			// TODO: Properly implement InstancedMesh, as there are clearly too many trees objects in the scene (is InstancedMesh really used!?). o.scene has two children (foliage + trunk).
 
@@ -487,7 +489,7 @@ export class ViewerComponent {
 
 		this.render();
 
-		this.initAtmosphere();
+		this.initAtmosphere(); // TODO: There is probably a race condition, because sometimes at app loading the globe atmosphere is very dark like at sunset. Probably not loading properly.
 	}
 
 	async zoomTo(destination: { coords: google.maps.LatLng; elevation: number }) {
@@ -695,7 +697,7 @@ export class ViewerComponent {
 	}
 
 	private initGoogleTileset(target: TilesRenderer): void {
-		target.errorTarget = 0;
+		target.errorTarget = 1;
 
 		target.registerPlugin(new GoogleCloudAuthPlugin({ apiToken: environment.GOOGLE_MAPS_3D_TILES_API_KEY }));
 		target.registerPlugin(
@@ -714,8 +716,8 @@ export class ViewerComponent {
 		target.registerPlugin(this.googleDebugTilesPlugin);
 		this.googleDebugTilesPlugin.enabled = false;
 		target.registerPlugin(new TileCompressionPlugin()); // TODO: Needed?
-		// TODO: Need UpdateOnChangePlugin?
-		// TODO: Use UnloadTilesPlugin
+		target.registerPlugin(new UpdateOnChangePlugin());
+		target.registerPlugin(new UnloadTilesPlugin());
 		target.registerPlugin(new TileCreasedNormalsPlugin());
 
 		const gltfLoader = new GLTFLoader(target.manager);
@@ -736,13 +738,11 @@ export class ViewerComponent {
 
 		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
 			updateObjectAndChildrenOpacity(o.scene, this.googleTilesOpacity);
-			this.renderingNeedsUpdate = true; // TODO: Needed?
 		});
 		target.addEventListener('tile-visibility-change', (o: { scene: Object3D; tile: Tile; visible: boolean }) => {
 			if (o.scene) {
 				// NB: Apparently the update of 3d-tiles-renderer after 0.3.41 changed behavior in BatchedTilesPlugin so that the scene object might be null...
 				updateObjectAndChildrenOpacity(o.scene, this.googleTilesOpacity);
-				this.renderingNeedsUpdate = true;
 			}
 		});
 		target.addEventListener('needs-update', () => {
@@ -752,11 +752,14 @@ export class ViewerComponent {
 
 	private initSwisstopo3DTileset(
 		target: TilesRenderer,
+		errorTarget: number,
 		meshCustomizationCallback?: (mesh: Mesh) => void,
 		overlaySwissimage = false
 	): void {
-		target.errorTarget = 10;
+		target.errorTarget = errorTarget;
 
+		target.registerPlugin(new UpdateOnChangePlugin());
+		target.registerPlugin(new UnloadTilesPlugin());
 		if (overlaySwissimage) {
 			target.registerPlugin(
 				new ImageOverlayPlugin({
@@ -786,7 +789,6 @@ export class ViewerComponent {
 
 		target.addEventListener('load-tile-set', (_o: { tileSet?: Object }) => {
 			target.group.position.copy(SWISS_GEOID_ELLIPSOID_OFFSET);
-			this.renderingNeedsUpdate = true;
 		});
 		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
 			o.scene.traverse(child => {
@@ -800,7 +802,9 @@ export class ViewerComponent {
 					}
 				}
 			});
-			this.renderingNeedsUpdate = true; // TODO: Needed?
+		});
+		target.addEventListener('needs-update', () => {
+			this.renderingNeedsUpdate = true;
 		});
 		target.addEventListener('dispose-model', (o: { scene: Object3D }) => disposeManuallyCreatedMaterials(o.scene));
 	}
@@ -810,6 +814,7 @@ export class ViewerComponent {
 
 		target.registerPlugin(new QuantizedMeshPlugin({}));
 		target.registerPlugin(new UpdateOnChangePlugin());
+		target.registerPlugin(new UnloadTilesPlugin());
 
 		const debugPlugin = new DebugTilesPlugin({
 			displayRegionBounds: true,
@@ -857,7 +862,6 @@ export class ViewerComponent {
 
 		target.addEventListener('load-tile-set', () => {
 			target.group.position.copy(SWISS_GEOID_ELLIPSOID_OFFSET);
-			this.renderingNeedsUpdate = true;
 		});
 		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
 			o.scene.traverse(child => {
