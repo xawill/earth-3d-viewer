@@ -11,6 +11,7 @@ import {
 	ImageOverlayPlugin,
 	XYZTilesOverlay,
 	UnloadTilesPlugin,
+	TilesFadePlugin,
 } from '3d-tiles-renderer/plugins';
 import {
 	Group,
@@ -731,6 +732,7 @@ export class ViewerComponent {
 		target.registerPlugin(new TileCompressionPlugin()); // TODO: Needed?
 		target.registerPlugin(new UpdateOnChangePlugin());
 		target.registerPlugin(new UnloadTilesPlugin());
+		target.registerPlugin(new TilesFadePlugin());
 		target.registerPlugin(new TileCreasedNormalsPlugin());
 
 		const gltfLoader = new GLTFLoader(target.manager);
@@ -773,6 +775,7 @@ export class ViewerComponent {
 
 		target.registerPlugin(new UpdateOnChangePlugin());
 		target.registerPlugin(new UnloadTilesPlugin());
+		target.registerPlugin(new TilesFadePlugin()); // TODO: Doesn't seem to have any noticeable impact
 		if (overlaySwissimage) {
 			target.registerPlugin(
 				new ImageOverlayPlugin({
@@ -834,6 +837,7 @@ export class ViewerComponent {
 		target.registerPlugin(new QuantizedMeshPlugin({}));
 		target.registerPlugin(new UpdateOnChangePlugin());
 		target.registerPlugin(new UnloadTilesPlugin());
+		target.registerPlugin(new TilesFadePlugin());
 
 		const debugPlugin = new DebugTilesPlugin({
 			displayRegionBounds: true,
