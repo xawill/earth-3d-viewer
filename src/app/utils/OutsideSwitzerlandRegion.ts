@@ -2,7 +2,6 @@ import { TileBoundingVolume, Tile, TilesRenderer, OBB } from '3d-tiles-renderer'
 import { BaseRegion } from '3d-tiles-renderer/plugins';
 import { Box3, Matrix4, Vector3 } from 'three';
 
-const REUSABLE_BOX3 = new Box3();
 const REUSABLE_VECTOR3 = new Vector3();
 const SWITZERLAND_OBB_INTERSECTION_EPSILON = 10000; // [m]
 
