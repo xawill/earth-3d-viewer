@@ -17,7 +17,6 @@ import {
 	Group,
 	Intersection,
 	MathUtils,
-	PCFSoftShadowMap,
 	PerspectiveCamera,
 	Raycaster,
 	Scene,
@@ -131,6 +130,7 @@ const REUSABLE_VECTOR2 = new Vector2();
 const REUSABLE_VECTOR3_1 = new Vector3();
 const REUSABLE_VECTOR3_2 = new Vector3();
 const REUSABLE_VECTOR3_3 = new Vector3();
+const REUSABLE_MATRIX4 = new Matrix4();
 
 const BUILDING_MATERIALS = [
 	'architextures/aluminium-stack-1219-mm-architextures.jpg',
@@ -322,22 +322,25 @@ export class ViewerComponent {
 			powerPreference: 'high-performance',
 			antialias: true,
 			stencil: false,
-			depth: true,
-			logarithmicDepthBuffer: false,
+			depth: false,
+			logarithmicDepthBuffer: true,
 			canvas: this.canvas.nativeElement,
 		});
 		this.renderer.setPixelRatio(window.devicePixelRatio);
 		this.renderer.setSize(window.innerWidth, window.innerHeight);
-		this.renderer.setClearColor(0x151c1f);
 		//this.renderer.localClippingEnabled = true;
 		this.renderer.toneMapping = NoToneMapping;
 		this.renderer.toneMappingExposure = 6;
-		this.renderer.shadowMap.enabled = true;
-		this.renderer.shadowMap.type = PCFSoftShadowMap;
 		// TODO: Properly handle shadows with atmosphere (cast/receive shadows don't seem to work anymore).
 
 		this.camera = new PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, WGS84_RADIUS * 2);
 		//this.scene.add(this.camera);
+
+		this.composer = new EffectComposer(this.renderer, {
+			frameBufferType: HalfFloatType, // Use floating-point render buffer, as radiance/luminance is stored here.
+			multisampling: 0,
+		});
+		this.composer.addPass(new RenderPass(this.scene, this.camera));
 
 		this.controls = new GlobeControls(this.scene, this.camera, this.renderer.domElement);
 		this.controls.enableDamping = false;
@@ -345,6 +348,7 @@ export class ViewerComponent {
 		this.controls.maxAltitude = MathUtils.degToRad(90);
 		this.controls.minDistance = 0;
 
+		// TODO: Filter raycasting so that if tiles are hidden they are not hit. See https://github.com/NASA-AMMOS/3DTilesRendererJS/pull/1261#discussion_r2274897359
 		this.controls.addEventListener('start', () => {
 			if (this.zoomToCoordsAnimationTl.isActive()) {
 				this.zoomToCoordsAnimationTl.kill();
@@ -501,9 +505,19 @@ export class ViewerComponent {
 		this.onWindowResize();
 		window.addEventListener('resize', () => this.onWindowResize(), false);
 
-		this.render();
+		this.earth.updateWorldMatrix(true, true);
 
-		this.initAtmosphere(); // TODO: There is probably a race condition, because sometimes at app loading the globe atmosphere is very dark like at sunset. Probably not loading properly.
+		this.initAtmosphere()
+			.then(() => this.render(true))
+			.then(() => {
+				new DebugGui(
+					this.renderer,
+					this.swisstopoTerrainTiles,
+					this.aerialPerspective,
+					this.referenceDate,
+					() => (this.renderingNeedsUpdate = true)
+				);
+			});
 	}
 
 	async zoomTo(destination: { coords: google.maps.LatLng; elevation: number }) {
@@ -899,7 +913,13 @@ export class ViewerComponent {
 		});
 	}
 
-	private initAtmosphere(): void {
+	private async initAtmosphere(): Promise<void> {
+		// Generate precomputed textures.
+		const texturesGenerator = new PrecomputedTexturesGenerator(this.renderer);
+		await texturesGenerator.update().catch(error => {
+			console.error(error);
+		});
+
 		const atmosphereParameters = AtmosphereParameters.DEFAULT;
 		atmosphereParameters.sunAngularRadius = 0.01;
 		this.aerialPerspective = new AerialPerspectiveEffect(
@@ -916,57 +936,33 @@ export class ViewerComponent {
 				sun: true,
 				moon: true,
 				moonAngularRadius: 0.01,
-				lunarRadianceScale: 10, // TODO: Possible to have the moon bring light to scene at night?
+				lunarRadianceScale: 10, // TODO: Possible to have the moon bring light to scene at night? See https://github.com/takram-design-engineering/three-geospatial/issues/80
 			},
 			atmosphereParameters
 		);
 
 		// TODO: Fix stars which are not visible in the atmosphere effect. Must use StarsMaterial? Or is it related to https://github.com/takram-design-engineering/three-geospatial/issues/28?
 
-		this.aerialPerspective.ellipsoidMatrix.copy(this.earth.matrixWorld).setPosition(0, 0, 0);
-		const inverseEllipsoidMatrix = new Matrix4().copy(this.aerialPerspective.ellipsoidMatrix).invert();
-		this.aerialPerspective.ellipsoidCenter
-			.setFromMatrixPosition(this.earth.matrixWorld)
-			.applyMatrix4(inverseEllipsoidMatrix);
-
-		// Generate precomputed textures.
-		const texturesGenerator = new PrecomputedTexturesGenerator(this.renderer);
-		texturesGenerator.update().catch(error => {
-			console.error(error);
-		});
 		Object.assign(this.aerialPerspective, texturesGenerator.textures);
 
-		this.composer = new EffectComposer(this.renderer, {
-			frameBufferType: HalfFloatType, // Use floating-point render buffer, as radiance/luminance is stored here.
-			multisampling: 0,
-		});
-		this.composer.addPass(new RenderPass(this.scene, this.camera));
 		const normalPass = new NormalPass(this.scene, this.camera);
 		this.aerialPerspective.normalBuffer = normalPass.texture;
 		this.composer.addPass(normalPass);
 		this.composer.addPass(new EffectPass(this.camera, this.aerialPerspective));
-		this.composer.addPass(new EffectPass(this.camera, new LensFlareEffect())); // TODO: Looks like it doens't work.
+		this.composer.addPass(new EffectPass(this.camera, new LensFlareEffect()));
 		this.composer.addPass(new EffectPass(this.camera, new ToneMappingEffect({ mode: ToneMappingMode.AGX })));
 		this.composer.addPass(new EffectPass(this.camera, new SMAAEffect()));
 		this.composer.addPass(new EffectPass(this.camera, new DitheringEffect()));
-
-		new DebugGui(
-			this.renderer,
-			this.swisstopoTerrainTiles,
-			this.aerialPerspective,
-			this.referenceDate,
-			() => (this.renderingNeedsUpdate = true)
-		);
 	}
 
-	private render(): void {
+	private render(force = false): void {
 		requestAnimationFrame((_timestamp: DOMHighResTimeStamp) => {
 			this.render();
 		});
 
 		this.stats.update();
 
-		if (this.renderingNeedsUpdate) {
+		if (this.renderingNeedsUpdate || force) {
 			console.log('RENDERING');
 			this.renderingNeedsUpdate = false;
 
@@ -992,24 +988,28 @@ export class ViewerComponent {
 				this.swisstopoTerrainTiles.update();
 			}
 
+			getSunDirectionECEF(this.referenceDate, this.sunDirection);
+			getMoonDirectionECEF(this.referenceDate, this.moonDirection);
+
+			this.composer.passes.forEach(pass => {
+				// Update effect materials with current camera settings
+				if (pass.fullscreenMaterial instanceof EffectMaterial) {
+					pass.fullscreenMaterial.adoptCameraSettings(this.camera);
+				}
+			});
+
 			if (this.aerialPerspective) {
-				this.composer.passes.forEach(pass => {
-					// Update effect materials with current camera settings
-					if (pass.fullscreenMaterial instanceof EffectMaterial) {
-						pass.fullscreenMaterial.adoptCameraSettings(this.camera);
-					}
-				});
-
-				getSunDirectionECEF(this.referenceDate, this.sunDirection);
-				getMoonDirectionECEF(this.referenceDate, this.moonDirection);
-
 				this.aerialPerspective.sunDirection.copy(this.sunDirection);
 				this.aerialPerspective.moonDirection.copy(this.moonDirection);
 
-				this.composer.render();
-			} else {
-				this.renderer.render(this.scene, this.camera);
+				this.aerialPerspective.ellipsoidMatrix.copy(this.earth.matrixWorld).setPosition(0, 0, 0);
+				const inverseEllipsoidMatrix = REUSABLE_MATRIX4.copy(this.aerialPerspective.ellipsoidMatrix).invert();
+				this.aerialPerspective.ellipsoidCenter
+					.setFromMatrixPosition(this.earth.matrixWorld)
+					.applyMatrix4(inverseEllipsoidMatrix);
 			}
+
+			this.composer.render();
 		}
 	}
 
