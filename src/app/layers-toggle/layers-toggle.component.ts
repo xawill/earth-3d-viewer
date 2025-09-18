@@ -6,7 +6,7 @@ import { initFlowbite } from 'flowbite';
 	selector: 'layers-settings',
 	imports: [ReactiveFormsModule],
 	templateUrl: './layers-toggle.component.html',
-	styleUrl: './layers-toggle.component.scss',
+	styleUrl: './layers-toggle.component.css',
 })
 export class LayersSettingsComponent {
 	@Output() layersSettings = new EventEmitter<LayersSettings>();

@@ -1,0 +1,14 @@
+@import 'tailwindcss';
+@import 'flowbite/src/themes/default';
+@plugin "flowbite/plugin";
+@source "../node_modules/flowbite";
+
+button {
+	line-height: 100%;
+}
+
+.lil-gui.autoPlace {
+	left: 0 !important;
+	top: 45px !important;
+	right: unset !important;
+}

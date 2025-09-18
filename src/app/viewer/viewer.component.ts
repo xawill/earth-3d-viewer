@@ -235,7 +235,7 @@ const SWISSTOPO_TLM_MATERIAL = new MeshBasicMaterial({
 	selector: 'app-viewer',
 	imports: [AddressSearchComponent, LayersSettingsComponent],
 	templateUrl: './viewer.component.html',
-	styleUrl: './viewer.component.scss',
+	styleUrl: './viewer.component.css',
 })
 export class ViewerComponent {
 	private scene!: Scene;
