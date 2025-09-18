@@ -36,7 +36,10 @@ export class OutsideSwitzerlandRegion extends BaseRegion {
 	);
 
 	constructor(private cameraElevationThreshold: number) {
-		super(Infinity, true);
+		super({
+			errorTarget: Infinity,
+			mask: true,
+		});
 		this.obb.update();
 	}
 
