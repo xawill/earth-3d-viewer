@@ -56,8 +56,8 @@ import {
 import { DitheringEffect, LensFlareEffect } from '@takram/three-geospatial-effects';
 import { disposeManuallyCreatedMaterials, TileCreasedNormalsPlugin } from '../utils/tiles-utils';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
-import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { AddressSearchComponent } from '../address-search/address-search.component';
 import { environment } from '../../environments/environment';
 import gsap from 'gsap';
@@ -289,6 +289,7 @@ export class ViewerComponent {
 	constructor() {
 		this.dracoLoader = new DRACOLoader();
 		this.dracoLoader.setDecoderPath('libs/draco/gltf/');
+		this.dracoLoader.preload();
 
 		gsap.registerPlugin({
 			// From https://gsap.com/community/forums/topic/25830-tweening-value-with-large-number-of-decimals/#comment-125391
