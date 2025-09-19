@@ -12,6 +12,7 @@ import {
 	XYZTilesOverlay,
 	UnloadTilesPlugin,
 	TilesFadePlugin,
+	GLTFExtensionsPlugin,
 } from '3d-tiles-renderer/plugins';
 import {
 	Group,
@@ -57,7 +58,6 @@ import { DitheringEffect, LensFlareEffect } from '@takram/three-geospatial-effec
 import { disposeManuallyCreatedMaterials, TileCreasedNormalsPlugin } from '../utils/tiles-utils';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { AddressSearchComponent } from '../address-search/address-search.component';
 import { environment } from '../../environments/environment';
 import gsap from 'gsap';
@@ -742,6 +742,11 @@ export class ViewerComponent {
 				textureSize: null,
 			})
 		);
+		target.registerPlugin(
+			new GLTFExtensionsPlugin({
+				dracoLoader: this.dracoLoader,
+			})
+		);
 		target.registerPlugin(this.googleDebugTilesPlugin);
 		this.googleDebugTilesPlugin.enabled = false;
 		target.registerPlugin(new TileCompressionPlugin()); // TODO: Needed?
@@ -749,10 +754,6 @@ export class ViewerComponent {
 		target.registerPlugin(new UnloadTilesPlugin());
 		target.registerPlugin(new TilesFadePlugin());
 		target.registerPlugin(new TileCreasedNormalsPlugin());
-
-		const gltfLoader = new GLTFLoader(target.manager);
-		gltfLoader.setDRACOLoader(this.dracoLoader);
-		target.manager.addHandler(/\.gltf$/, gltfLoader);
 
 		// Remove Google tiles in Switzerland to use swisstopo's better dataset there.
 		const regionsPlugin = new LoadRegionPlugin();
@@ -788,6 +789,11 @@ export class ViewerComponent {
 	): void {
 		target.errorTarget = errorTarget;
 
+		target.registerPlugin(
+			new GLTFExtensionsPlugin({
+				dracoLoader: this.dracoLoader,
+			})
+		);
 		target.registerPlugin(new UpdateOnChangePlugin());
 		target.registerPlugin(new UnloadTilesPlugin());
 		target.registerPlugin(new TilesFadePlugin()); // TODO: Doesn't seem to have any noticeable impact
@@ -808,10 +814,6 @@ export class ViewerComponent {
 				})
 			);
 		}
-
-		const gltfLoader = new GLTFLoader(target.manager);
-		gltfLoader.setDRACOLoader(this.dracoLoader);
-		target.manager.addHandler(/\.gltf$/, gltfLoader);
 
 		target.setCamera(this.camera);
 		target.setResolutionFromRenderer(this.camera, this.renderer);
