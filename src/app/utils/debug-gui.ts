@@ -6,7 +6,9 @@ import { AerialPerspectiveEffect } from '@takram/three-atmosphere';
 export class DebugGui extends GUI {
 	constructor(
 		renderer: WebGLRenderer,
+		googleTiles: TilesRenderer,
 		swisstopoTerrainTiles: TilesRenderer,
+		swisstopoBuildingsTiles: TilesRenderer,
 		aerialPerspective: AerialPerspectiveEffect,
 		referenceDate: Date,
 		onValueChange: () => void
@@ -22,6 +24,11 @@ export class DebugGui extends GUI {
 		this.add(aerialPerspective, 'correctAltitude').onChange(onValueChange);
 
 		this.add(renderer, 'toneMappingExposure', 0, 100).onChange(onValueChange);
+
+		this.add(googleTiles, 'errorTarget', 1, 1000).onChange(value => {
+			(googleTiles.getPluginByName('UPDATE_ON_CHANGE_PLUGIN') as any).needsUpdate = true;
+			onValueChange();
+		});
 
 		/*this.add(swisstopoTerrainTiles.group.position, 'x', 0, 50).onChange(onValueChange);
 		this.add(swisstopoTerrainTiles.group.position, 'y', 0, 20).onChange(onValueChange);

@@ -84,7 +84,6 @@ import { OutsideSwitzerlandRegion } from '../utils/OutsideSwitzerlandRegion';
 import { hasMaterialColorOrMap, isMesh } from '../utils/three-type-guards';
 import { DebugGui } from '../utils/debug-gui';
 
-const GOOGLE_3D_TILES_TILESET_URL = 'https://tile.googleapis.com/v1/3dtiles/root.json';
 const SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL =
 	'https://3d.geo.admin.ch/ch.swisstopo.swissbuildings3d.3d/v1/tileset.json';
 const SWISSTOPO_TLM_3D_TILES_TILESET_URL = 'https://3d.geo.admin.ch/ch.swisstopo.swisstlm3d.3d/v1/tileset.json';
@@ -267,7 +266,7 @@ export class ViewerComponent {
 	private pivotPoint = new Vector3();
 	private targetCameraUp = new Vector3();
 
-	private googleTiles = new TilesRenderer(GOOGLE_3D_TILES_TILESET_URL);
+	private googleTiles = new TilesRenderer();
 	private swisstopoBuildingsTiles = new TilesRenderer(SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL);
 	private swisstopoTlmTiles = new TilesRenderer(SWISSTOPO_TLM_3D_TILES_TILESET_URL);
 	private swisstopoVegetationTiles = new TilesRenderer(SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL);
@@ -513,7 +512,9 @@ export class ViewerComponent {
 			.then(() => {
 				new DebugGui(
 					this.renderer,
+					this.googleTiles,
 					this.swisstopoTerrainTiles,
+					this.swisstopoBuildingsTiles,
 					this.aerialPerspective,
 					this.referenceDate,
 					() => (this.renderingNeedsUpdate = true)
@@ -726,9 +727,14 @@ export class ViewerComponent {
 	}
 
 	private initGoogleTileset(target: TilesRenderer): void {
-		target.errorTarget = 1;
+		target.errorTarget = 75;
 
-		target.registerPlugin(new GoogleCloudAuthPlugin({ apiToken: environment.GOOGLE_MAPS_3D_TILES_API_KEY }));
+		target.registerPlugin(
+			new GoogleCloudAuthPlugin({
+				apiToken: environment.GOOGLE_MAPS_3D_TILES_API_KEY,
+				useRecommendedSettings: false,
+			})
+		);
 		target.registerPlugin(
 			new BatchedTilesPlugin({
 				renderer: this.renderer,
@@ -851,7 +857,7 @@ export class ViewerComponent {
 	private initSwisstopoQuantizedTileset(target: TilesRenderer): void {
 		target.errorTarget = 1;
 
-		target.registerPlugin(new QuantizedMeshPlugin({}));
+		target.registerPlugin(new QuantizedMeshPlugin({ useRecommendedSettings: false }));
 		target.registerPlugin(new UpdateOnChangePlugin());
 		target.registerPlugin(new UnloadTilesPlugin());
 		target.registerPlugin(new TilesFadePlugin());
