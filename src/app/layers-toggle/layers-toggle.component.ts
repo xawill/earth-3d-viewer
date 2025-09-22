@@ -16,7 +16,7 @@ export class LayersSettingsComponent {
 		googleTilesOpacity: new FormControl(1, { nonNullable: true }),
 		swisstopoBuildingsTiles: new FormControl(false, { nonNullable: true }),
 		swisstopoVegetationTiles: new FormControl(false, { nonNullable: true }),
-		swisstopoNamesTiles: new FormControl(false, { nonNullable: true }),
+		adminOverlay: new FormControl(false, { nonNullable: true }),
 	});
 
 	constructor() {
@@ -33,8 +33,8 @@ export class LayersSettingsComponent {
 				swisstopoVegetationTiles: {
 					enabled: values.swisstopoVegetationTiles?.valueOf(),
 				},
-				swisstopoNamesTiles: {
-					enabled: values.swisstopoNamesTiles?.valueOf(),
+				adminOverlay: {
+					enabled: values.adminOverlay?.valueOf(),
 				},
 			});
 		});
@@ -60,7 +60,7 @@ export interface LayersSettings {
 	swisstopoVegetationTiles?: {
 		enabled?: boolean;
 	};
-	swisstopoNamesTiles?: {
+	adminOverlay?: {
 		enabled?: boolean;
 	};
 }

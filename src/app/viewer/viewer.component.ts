@@ -13,6 +13,7 @@ import {
 	UnloadTilesPlugin,
 	TilesFadePlugin,
 	GLTFExtensionsPlugin,
+	GoogleMapsOverlay,
 } from '3d-tiles-renderer/plugins';
 import {
 	Group,
@@ -83,6 +84,7 @@ import { SwitzerlandRegion } from '../utils/SwitzerlandRegion';
 import { OutsideSwitzerlandRegion } from '../utils/OutsideSwitzerlandRegion';
 import { hasMaterialColorOrMap, isMesh } from '../utils/three-type-guards';
 import { DebugGui } from '../utils/debug-gui';
+import { GOOGLE_MAPS_2D_TILES_NAMES_STYLES } from '../config/tiles.config';
 
 const SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL =
 	'https://3d.geo.admin.ch/ch.swisstopo.swissbuildings3d.3d/v1/tileset.json';
@@ -273,11 +275,34 @@ export class ViewerComponent {
 	private swisstopoNamesTiles = new TilesRenderer(SWISSTOPO_NAMES_3D_TILES_TILESET_URL);
 	private swisstopoTerrainTiles = new TilesRenderer(SWISSTOPO_TERRAIN_3D_TILES_TILESET_URL);
 
+	private namesOverlay = new GoogleMapsOverlay({
+		apiToken: environment.GOOGLE_MAPS_3D_TILES_API_KEY,
+		autoRefreshToken: true,
+		sessionOptions: {
+			mapType: 'roadmap',
+			language: 'fr-CH',
+			region: 'CH',
+			scale: 'scaleFactor4x',
+			highDpi: true,
+			styles: GOOGLE_MAPS_2D_TILES_NAMES_STYLES,
+		},
+		color: 0xffffff,
+		opacity: 1,
+	});
+	private swissimageOverlay = new XYZTilesOverlay({
+		url: SWISSTOPO_SWISSIMAGE_XYZ_URL,
+		levels: 20,
+		dimension: 256,
+		color: 0xffffff,
+		opacity: 1,
+	});
+
 	private googleDebugTilesPlugin = new DebugTilesPlugin({
 		maxDebugError: 100,
 		maxDebugDistance: 100,
 		displayBoxBounds: true,
 	});
+	private googleTilesNamesOverlayPlugin!: ImageOverlayPlugin;
 
 	private googleTilesOpacity = 1;
 
@@ -715,8 +740,13 @@ export class ViewerComponent {
 		if ($event.swisstopoVegetationTiles !== undefined && $event.swisstopoVegetationTiles.enabled !== undefined) {
 			this.swisstopoVegetationTiles.group.visible = $event.swisstopoVegetationTiles.enabled;
 		}
-		if ($event.swisstopoNamesTiles !== undefined && $event.swisstopoNamesTiles.enabled !== undefined) {
-			this.swisstopoNamesTiles.group.visible = $event.swisstopoNamesTiles.enabled;
+		if ($event.adminOverlay !== undefined && $event.adminOverlay.enabled !== undefined) {
+			this.swisstopoNamesTiles.group.visible = $event.adminOverlay.enabled;
+			if ($event.adminOverlay.enabled) {
+				this.googleTilesNamesOverlayPlugin.addOverlay(this.namesOverlay);
+			} else {
+				this.googleTilesNamesOverlayPlugin.deleteOverlay(this.namesOverlay);
+			}
 		}
 
 		this.renderingNeedsUpdate = true;
@@ -760,6 +790,13 @@ export class ViewerComponent {
 		target.registerPlugin(new UnloadTilesPlugin());
 		target.registerPlugin(new TilesFadePlugin());
 		target.registerPlugin(new TileCreasedNormalsPlugin());
+
+		this.googleTilesNamesOverlayPlugin = new ImageOverlayPlugin({
+			renderer: this.renderer,
+			enableTileSplitting: true,
+			overlays: [], // Overlay is added dynamically based on user settings
+		});
+		target.registerPlugin(this.googleTilesNamesOverlayPlugin);
 
 		// Remove Google tiles in Switzerland to use swisstopo's better dataset there.
 		const regionsPlugin = new LoadRegionPlugin();
@@ -805,18 +842,11 @@ export class ViewerComponent {
 		target.registerPlugin(new TilesFadePlugin()); // TODO: Doesn't seem to have any noticeable impact
 		if (overlaySwissimage) {
 			target.registerPlugin(
+				// TODO: Check how to reuse plugins between tiles sets; currently unsupported (see https://github.com/NASA-AMMOS/3DTilesRendererJS/issues/1264).
 				new ImageOverlayPlugin({
 					renderer: this.renderer,
 					enableTileSplitting: true,
-					overlays: [
-						new XYZTilesOverlay({
-							url: SWISSTOPO_SWISSIMAGE_XYZ_URL,
-							levels: 20,
-							dimension: 256,
-							color: 0xffffff,
-							opacity: 1,
-						}),
-					],
+					overlays: [this.swissimageOverlay],
 				})
 			);
 		}
@@ -884,20 +914,12 @@ export class ViewerComponent {
 		target.registerPlugin(regionsPlugin);
 		regionsPlugin.addRegion(new SwitzerlandRegion(SWITZERLAND_REGION_CAMERA_ELEVATION_THRESHOLD));
 
-		// Texture with SWISSIMAGE // TODO: This ImageOverlayPlugin new approach seams to be less performant than with TextureOverlayPlugin. Considering reverting...
+		// TODO: This ImageOverlayPlugin new approach seams to be less performant than with TextureOverlayPlugin. Considering reverting...
 		target.registerPlugin(
 			new ImageOverlayPlugin({
 				renderer: this.renderer,
 				enableTileSplitting: true,
-				overlays: [
-					new XYZTilesOverlay({
-						url: SWISSTOPO_SWISSIMAGE_XYZ_URL,
-						levels: 20,
-						dimension: 256,
-						color: 0xffffff,
-						opacity: 1,
-					}),
-				],
+				overlays: [this.swissimageOverlay, this.namesOverlay], // Texture with SWISSIMAGE and add names from Google
 			})
 		);
 
