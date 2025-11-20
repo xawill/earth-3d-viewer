@@ -296,13 +296,14 @@ export class ViewerComponent {
 		color: 0xffffff,
 		opacity: 1,
 	});
+	private swisstopoOverlayPlugin!: ImageOverlayPlugin;
 
 	private googleDebugTilesPlugin = new DebugTilesPlugin({
 		maxDebugError: 100,
 		maxDebugDistance: 100,
 		displayBoxBounds: true,
 	});
-	private googleTilesNamesOverlayPlugin!: ImageOverlayPlugin;
+	private googleTilesOverlayPlugin!: ImageOverlayPlugin;
 
 	private googleTilesOpacity = 1;
 
@@ -743,9 +744,11 @@ export class ViewerComponent {
 		if ($event.adminOverlay !== undefined && $event.adminOverlay.enabled !== undefined) {
 			this.swisstopoNamesTiles.group.visible = $event.adminOverlay.enabled;
 			if ($event.adminOverlay.enabled) {
-				this.googleTilesNamesOverlayPlugin.addOverlay(this.namesOverlay);
+				this.googleTilesOverlayPlugin.addOverlay(this.namesOverlay);
+				this.swisstopoOverlayPlugin.addOverlay(this.namesOverlay);
 			} else {
-				this.googleTilesNamesOverlayPlugin.deleteOverlay(this.namesOverlay);
+				this.googleTilesOverlayPlugin.deleteOverlay(this.namesOverlay);
+				this.swisstopoOverlayPlugin.deleteOverlay(this.namesOverlay);
 			}
 		}
 
@@ -791,12 +794,12 @@ export class ViewerComponent {
 		target.registerPlugin(new TilesFadePlugin());
 		target.registerPlugin(new TileCreasedNormalsPlugin());
 
-		this.googleTilesNamesOverlayPlugin = new ImageOverlayPlugin({
+		this.googleTilesOverlayPlugin = new ImageOverlayPlugin({
 			renderer: this.renderer,
 			enableTileSplitting: true,
 			overlays: [], // Overlay is added dynamically based on user settings
 		});
-		target.registerPlugin(this.googleTilesNamesOverlayPlugin);
+		target.registerPlugin(this.googleTilesOverlayPlugin);
 
 		// Remove Google tiles in Switzerland to use swisstopo's better dataset there.
 		const regionsPlugin = new LoadRegionPlugin();
@@ -915,13 +918,12 @@ export class ViewerComponent {
 		regionsPlugin.addRegion(new SwitzerlandRegion(SWITZERLAND_REGION_CAMERA_ELEVATION_THRESHOLD));
 
 		// TODO: This ImageOverlayPlugin new approach seams to be less performant than with TextureOverlayPlugin. Considering reverting...
-		target.registerPlugin(
-			new ImageOverlayPlugin({
-				renderer: this.renderer,
-				enableTileSplitting: true,
-				overlays: [this.swissimageOverlay, this.namesOverlay], // Texture with SWISSIMAGE and add names from Google
-			})
-		);
+		this.swisstopoOverlayPlugin = new ImageOverlayPlugin({
+			renderer: this.renderer,
+			enableTileSplitting: true,
+			overlays: [this.swissimageOverlay], // Texture with SWISSIMAGE; Google names 2d tiles overlay is added dynamically based on user settings
+		});
+		target.registerPlugin(this.swisstopoOverlayPlugin);
 
 		target.setCamera(this.camera);
 		target.setResolutionFromRenderer(this.camera, this.renderer);
