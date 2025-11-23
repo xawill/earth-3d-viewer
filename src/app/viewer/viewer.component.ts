@@ -9,11 +9,12 @@ import {
 	QuantizedMeshPlugin,
 	LoadRegionPlugin,
 	ImageOverlayPlugin,
-	XYZTilesOverlay,
+	WMTSTilesOverlay,
 	UnloadTilesPlugin,
 	TilesFadePlugin,
 	GLTFExtensionsPlugin,
 	GoogleMapsOverlay,
+	WMTSCapabilitiesLoader,
 } from '3d-tiles-renderer/plugins';
 import {
 	Group,
@@ -86,6 +87,8 @@ import { hasMaterialColorOrMap, isMesh } from '../utils/three-type-guards';
 import { DebugGui } from '../utils/debug-gui';
 import { GOOGLE_MAPS_2D_TILES_NAMES_STYLES } from '../config/tiles.config';
 
+const GIGABYTE_BYTES = 2 ** 30;
+
 const SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL =
 	'https://3d.geo.admin.ch/ch.swisstopo.swissbuildings3d.3d/v1/tileset.json';
 const SWISSTOPO_TLM_3D_TILES_TILESET_URL = 'https://3d.geo.admin.ch/ch.swisstopo.swisstlm3d.3d/v1/tileset.json';
@@ -93,8 +96,9 @@ const SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL = 'https://3d.geo.admin.ch/ch.sw
 const SWISSTOPO_NAMES_3D_TILES_TILESET_URL =
 	'https://3d.geo.admin.ch/3d-tiles/ch.swisstopo.swissnames3d.3d/20180716/tileset.json';
 const SWISSTOPO_TERRAIN_3D_TILES_TILESET_URL = 'https://3d.geo.admin.ch/ch.swisstopo.terrain.3d/v1/layer.json';
-const SWISSTOPO_SWISSIMAGE_XYZ_URL =
-	'https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg'; // Max zoom level is 20. To test/debug tiles indexing: https://codepen.io/procrastinatio/pen/BgaGWZ
+const SWISSTOPO_SWISSIMAGE_GET_CAPABILITIES_URL = 'https://wmts.geo.admin.ch/EPSG/3857/1.0.0/WMTSCapabilities.xml';
+
+// TODO: Au clic, date d'image: https://api3.geo.admin.ch/rest/services/all/MapServer/identify?geometry=678250,213000&geometryFormat=geojson&geometryType=esriGeometryPoint&imageDisplay=1391,1070,96&lang=fr&layers=all:ch.swisstopo.images-swissimage-dop10.metadata&mapExtent=100,100,100,100&returnGeometry=true&tolerance=5
 
 const DEFAULT_START_COORDS: LatLng = { lat: 46.516591, lng: 6.629047 };
 const HEIGHT_FULL_GLOBE_VISIBLE = 7000000;
@@ -275,35 +279,13 @@ export class ViewerComponent {
 	private swisstopoNamesTiles = new TilesRenderer(SWISSTOPO_NAMES_3D_TILES_TILESET_URL);
 	private swisstopoTerrainTiles = new TilesRenderer(SWISSTOPO_TERRAIN_3D_TILES_TILESET_URL);
 
-	private namesOverlay = new GoogleMapsOverlay({
-		apiToken: environment.GOOGLE_MAPS_3D_TILES_API_KEY,
-		autoRefreshToken: true,
-		sessionOptions: {
-			mapType: 'roadmap',
-			language: 'fr-CH',
-			region: 'CH',
-			scale: 'scaleFactor4x',
-			highDpi: true,
-			styles: GOOGLE_MAPS_2D_TILES_NAMES_STYLES,
-		},
-		color: 0xffffff,
-		opacity: 1,
-	});
-	private swissimageOverlay = new XYZTilesOverlay({
-		url: SWISSTOPO_SWISSIMAGE_XYZ_URL,
-		levels: 20,
-		dimension: 256,
-		color: 0xffffff,
-		opacity: 1,
-	});
-	private swisstopoOverlayPlugin!: ImageOverlayPlugin;
+	private namesOverlay!: GoogleMapsOverlay;
+	private swissimageOverlay!: WMTSTilesOverlay;
 
-	private googleDebugTilesPlugin = new DebugTilesPlugin({
-		maxDebugError: 100,
-		maxDebugDistance: 100,
-		displayBoxBounds: true,
-	});
+	private googleDebugTilesPlugin!: DebugTilesPlugin;
 	private googleTilesOverlayPlugin!: ImageOverlayPlugin;
+	private swisstopoTerrainOverlayPlugin!: ImageOverlayPlugin;
+	private swisstopo3DObjectOverlayPlugin!: ImageOverlayPlugin;
 
 	private googleTilesOpacity = 1;
 
@@ -341,7 +323,7 @@ export class ViewerComponent {
 		});
 	}
 
-	ngAfterViewInit() {
+	async ngAfterViewInit() {
 		this.scene = new Scene();
 
 		this.renderer = new WebGLRenderer({
@@ -418,18 +400,43 @@ export class ViewerComponent {
 		this.stats.showPanel(0);
 		document.body.appendChild(this.stats.dom);
 
-		// Since we share the cache between swisstopo tiles renderers, we need to increase its size.
-		const cacheSizeMultiplier = 6;
-		this.swisstopoBuildingsTiles.lruCache.maxSize =
-			Number(this.swisstopoBuildingsTiles.lruCache.maxSize) * cacheSizeMultiplier;
-		this.swisstopoBuildingsTiles.lruCache.minSize =
-			Number(this.swisstopoBuildingsTiles.lruCache.minSize) * cacheSizeMultiplier;
-		this.swisstopoBuildingsTiles.lruCache.maxBytesSize =
-			Number(this.swisstopoBuildingsTiles.lruCache.maxBytesSize) * cacheSizeMultiplier;
-		this.swisstopoBuildingsTiles.lruCache.minBytesSize =
-			Number(this.swisstopoBuildingsTiles.lruCache.minBytesSize) * cacheSizeMultiplier;
-		this.swisstopoBuildingsTiles.lruCache.unloadPercent =
-			Number(this.swisstopoBuildingsTiles.lruCache.unloadPercent) * cacheSizeMultiplier;
+		this.namesOverlay = new GoogleMapsOverlay({
+			apiToken: environment.GOOGLE_MAPS_3D_TILES_API_KEY,
+			autoRefreshToken: true,
+			sessionOptions: {
+				mapType: 'roadmap',
+				language: 'fr-CH',
+				region: 'CH',
+				scale: 'scaleFactor4x',
+				highDpi: true,
+				styles: GOOGLE_MAPS_2D_TILES_NAMES_STYLES,
+			},
+			color: 0xffffff,
+			opacity: 1,
+		});
+
+		this.swissimageOverlay = new WMTSTilesOverlay({
+			// Max zoom level is 20. To test/debug tiles indexing: https://codepen.io/xawill/pen/Wbrveqb
+			// url: "https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/{Time}/3857/{TileMatrix}/{TileCol}/{TileRow}.jpeg",
+			capabilities: await new WMTSCapabilitiesLoader().loadAsync(SWISSTOPO_SWISSIMAGE_GET_CAPABILITIES_URL),
+			layer: 'ch.swisstopo.swissimage', // 			layer: 'ch.swisstopo.pixelkarte-farbe',
+			style: 'default',
+			dimensions: { Time: 'current' },
+			color: 0xffffff,
+			opacity: 1,
+		});
+		this.swisstopoTerrainOverlayPlugin = new ImageOverlayPlugin({
+			renderer: this.renderer,
+			resolution: 512, // TODO: Still not optimal resolution wrt swissimage dataset, but performance is already degreded with 512... Find out why.
+			enableTileSplitting: true,
+			overlays: [this.swissimageOverlay], // Texture with SWISSIMAGE
+		});
+		this.swisstopo3DObjectOverlayPlugin = new ImageOverlayPlugin({
+			renderer: this.renderer,
+			resolution: 512, // TODO: Still not optimal resolution wrt swissimage dataset, but performance is already degreded with 512... Find out why.
+			enableTileSplitting: true,
+			overlays: [this.swissimageOverlay], // Texture with SWISSIMAGE
+		});
 
 		this.initGoogleTileset(this.googleTiles);
 		this.initSwisstopo3DTileset(
@@ -480,7 +487,7 @@ export class ViewerComponent {
 			},
 			true
 		);
-		this.initSwisstopo3DTileset(this.swisstopoTlmTiles, 1, async (mesh: Mesh) => {
+		this.initSwisstopo3DTileset(this.swisstopoTlmTiles, 100, async (mesh: Mesh) => {
 			// Having all objects share the same material. Also making sure that the material is unlit for proper rendering with atmosphere support.
 			// TODO: In the original dataset, different colors are applied to different structures. Let's try to find a way to recover them while still reusing the different materials.
 			// TODO: Even better: texture with SWISSIMAGE (once performance issues are solved).
@@ -522,6 +529,8 @@ export class ViewerComponent {
 		//this.initSwisstopo3DTileset(this.swisstopoNamesTiles); // TODO: .vctr format not supported (yet). // TODO: Find most recent tileset (if it even exists?)
 		this.initSwisstopoQuantizedTileset(this.swisstopoTerrainTiles);
 
+		this.controls.setEllipsoid(this.googleTiles.ellipsoid, this.googleTiles.group);
+
 		// Set init camera position
 		this.currentPosition.lon = DEFAULT_START_COORDS.lng * MathUtils.DEG2RAD;
 		this.currentPosition.lat = DEFAULT_START_COORDS.lat * MathUtils.DEG2RAD;
@@ -533,19 +542,21 @@ export class ViewerComponent {
 
 		this.earth.updateWorldMatrix(true, true);
 
-		this.initAtmosphere()
-			.then(() => this.render(true))
-			.then(() => {
+		this.initAtmosphere().then(() => this.render(true));
+		/*.then(() => {
 				new DebugGui(
 					this.renderer,
+					this.camera,
 					this.googleTiles,
 					this.swisstopoTerrainTiles,
 					this.swisstopoBuildingsTiles,
+					this.swisstopoTlmTiles,
+					this.swisstopoVegetationTiles,
 					this.aerialPerspective,
 					this.referenceDate,
 					() => (this.renderingNeedsUpdate = true)
 				);
-			});
+			})*/
 	}
 
 	async zoomTo(destination: { coords: google.maps.LatLng; elevation: number }) {
@@ -726,30 +737,40 @@ export class ViewerComponent {
 	}
 
 	updateLayers($event: LayersSettings) {
-		if ($event.googleTiles !== undefined) {
-			if ($event.googleTiles.enabled !== undefined) {
-				this.googleTiles.group.visible = $event.googleTiles.enabled;
-			}
-			if ($event.googleTiles.opacity !== undefined) {
-				this.googleTilesOpacity = $event.googleTiles!.opacity!;
-				updateObjectAndChildrenOpacity(this.googleTiles.group, this.googleTilesOpacity);
-			}
+		if ($event.googleTiles?.enabled === true) {
+			this.googleTiles.group.visible = true;
+		} else if ($event.googleTiles?.enabled === false) {
+			this.googleTiles.group.visible = false;
+			// TODO: Dispose tiles?
 		}
-		if ($event.swisstopoBuildingsTiles !== undefined && $event.swisstopoBuildingsTiles.enabled !== undefined) {
-			this.swisstopoBuildingsTiles.group.visible = $event.swisstopoBuildingsTiles.enabled;
+		if ($event.googleTiles?.opacity !== undefined) {
+			this.googleTilesOpacity = $event.googleTiles!.opacity!;
+			updateObjectAndChildrenOpacity(this.googleTiles.group, this.googleTilesOpacity);
 		}
-		if ($event.swisstopoVegetationTiles !== undefined && $event.swisstopoVegetationTiles.enabled !== undefined) {
-			this.swisstopoVegetationTiles.group.visible = $event.swisstopoVegetationTiles.enabled;
+
+		if ($event.swisstopoBuildingsTiles?.enabled === true) {
+			this.swisstopoBuildingsTiles.group.visible = true;
+		} else if ($event.swisstopoBuildingsTiles?.enabled === false) {
+			this.swisstopoBuildingsTiles.group.visible = false;
+			// TODO: Dispose tiles
 		}
-		if ($event.adminOverlay !== undefined && $event.adminOverlay.enabled !== undefined) {
-			this.swisstopoNamesTiles.group.visible = $event.adminOverlay.enabled;
-			if ($event.adminOverlay.enabled) {
-				this.googleTilesOverlayPlugin.addOverlay(this.namesOverlay);
-				this.swisstopoOverlayPlugin.addOverlay(this.namesOverlay);
-			} else {
-				this.googleTilesOverlayPlugin.deleteOverlay(this.namesOverlay);
-				this.swisstopoOverlayPlugin.deleteOverlay(this.namesOverlay);
-			}
+
+		if ($event.swisstopoVegetationTiles?.enabled === true) {
+			this.swisstopoVegetationTiles.group.visible = true;
+		} else if ($event.swisstopoVegetationTiles?.enabled === false) {
+			this.swisstopoVegetationTiles.group.visible = false;
+			// TODO: Dispose tiles
+		}
+
+		if ($event.adminOverlay?.enabled === true) {
+			this.swisstopoNamesTiles.group.visible = true;
+			this.googleTilesOverlayPlugin?.addOverlay(this.namesOverlay);
+			this.swisstopoTerrainOverlayPlugin?.addOverlay(this.namesOverlay);
+		} else if ($event.adminOverlay?.enabled === false) {
+			this.swisstopoNamesTiles.group.visible = false;
+			this.googleTilesOverlayPlugin?.deleteOverlay(this.namesOverlay);
+			this.swisstopoTerrainOverlayPlugin?.deleteOverlay(this.namesOverlay);
+			// TODO: Dispose tiles
 		}
 
 		this.renderingNeedsUpdate = true;
@@ -760,7 +781,22 @@ export class ViewerComponent {
 	}
 
 	private initGoogleTileset(target: TilesRenderer): void {
-		target.errorTarget = 75;
+		target.errorTarget = 50;
+
+		target.lruCache.maxSize = Infinity;
+		target.lruCache.minSize = 0;
+		target.lruCache.maxBytesSize = 0.5 * GIGABYTE_BYTES;
+		target.lruCache.minBytesSize = target.lruCache.maxBytesSize * (2 / 3);
+		target.lruCache.unloadPercent = 0.1;
+		target.downloadQueue.maxJobs *= 10;
+		target.parseQueue.maxJobs *= 10;
+		target.processNodeQueue.maxJobs *= 10;
+
+		this.googleDebugTilesPlugin = new DebugTilesPlugin({
+			maxDebugError: 100,
+			maxDebugDistance: 100,
+			displayBoxBounds: true,
+		});
 
 		target.registerPlugin(
 			new GoogleCloudAuthPlugin({
@@ -768,31 +804,32 @@ export class ViewerComponent {
 				useRecommendedSettings: false,
 			})
 		);
-		target.registerPlugin(
-			new BatchedTilesPlugin({
-				renderer: this.renderer,
-				instanceCount: 500,
-				vertexCount: 750,
-				indexCount: 2000,
-				expandPercent: 0.25,
-				maxInstanceCount: Infinity,
-				discardOriginalContent: true,
-				material: null,
-				textureSize: null,
-			})
-		);
+		target.registerPlugin(new TileCompressionPlugin()); // TODO: Needed?
+		target.registerPlugin(new UpdateOnChangePlugin());
+		target.registerPlugin(new UnloadTilesPlugin());
+		target.registerPlugin(new TilesFadePlugin());
 		target.registerPlugin(
 			new GLTFExtensionsPlugin({
 				dracoLoader: this.dracoLoader,
 			})
 		);
-		target.registerPlugin(this.googleDebugTilesPlugin);
-		this.googleDebugTilesPlugin.enabled = false;
-		target.registerPlugin(new TileCompressionPlugin()); // TODO: Needed?
-		target.registerPlugin(new UpdateOnChangePlugin());
-		target.registerPlugin(new UnloadTilesPlugin());
-		target.registerPlugin(new TilesFadePlugin());
+		target.registerPlugin(
+			new BatchedTilesPlugin({
+				renderer: this.renderer,
+				instanceCount: 250,
+				vertexCount: 750,
+				indexCount: 2000,
+				expandPercent: 0.25,
+				maxInstanceCount: Infinity,
+				discardOriginalContent: false, // Set this to false if using UnloadTilesPlugin
+				material: null,
+				textureSize: null,
+			})
+		);
 		target.registerPlugin(new TileCreasedNormalsPlugin());
+		target.registerPlugin(this.googleDebugTilesPlugin);
+
+		this.googleDebugTilesPlugin.enabled = false;
 
 		this.googleTilesOverlayPlugin = new ImageOverlayPlugin({
 			renderer: this.renderer,
@@ -811,8 +848,6 @@ export class ViewerComponent {
 
 		this.earth.add(target.group);
 
-		this.controls.setEllipsoid(target.ellipsoid, target.group);
-
 		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
 			updateObjectAndChildrenOpacity(o.scene, this.googleTilesOpacity);
 		});
@@ -822,7 +857,13 @@ export class ViewerComponent {
 				updateObjectAndChildrenOpacity(o.scene, this.googleTilesOpacity);
 			}
 		});
+		target.addEventListener('needs-render', () => {
+			this.renderingNeedsUpdate = true;
+		});
 		target.addEventListener('needs-update', () => {
+			this.renderingNeedsUpdate = true;
+		});
+		target.addEventListener('fade-change', () => {
 			this.renderingNeedsUpdate = true;
 		});
 	}
@@ -835,6 +876,21 @@ export class ViewerComponent {
 	): void {
 		target.errorTarget = errorTarget;
 
+		// Share caches and queues between swisstopo tiles renderers
+		target.lruCache = this.swisstopoBuildingsTiles.lruCache;
+		target.downloadQueue = this.swisstopoBuildingsTiles.downloadQueue;
+		target.parseQueue = this.swisstopoBuildingsTiles.parseQueue;
+		target.processNodeQueue = this.swisstopoBuildingsTiles.processNodeQueue;
+
+		target.lruCache.maxSize = Infinity;
+		target.lruCache.minSize = 0;
+		target.lruCache.maxBytesSize = 1.5 * GIGABYTE_BYTES;
+		target.lruCache.minBytesSize = target.lruCache.maxBytesSize * (2 / 3);
+		target.lruCache.unloadPercent = 0.1;
+		target.downloadQueue.maxJobs *= 10;
+		target.parseQueue.maxJobs *= 10;
+		target.processNodeQueue.maxJobs *= 10;
+
 		target.registerPlugin(
 			new GLTFExtensionsPlugin({
 				dracoLoader: this.dracoLoader,
@@ -844,24 +900,12 @@ export class ViewerComponent {
 		target.registerPlugin(new UnloadTilesPlugin());
 		target.registerPlugin(new TilesFadePlugin()); // TODO: Doesn't seem to have any noticeable impact
 		if (overlaySwissimage) {
-			target.registerPlugin(
-				// TODO: Check how to reuse plugins between tiles sets; currently unsupported (see https://github.com/NASA-AMMOS/3DTilesRendererJS/issues/1264).
-				new ImageOverlayPlugin({
-					renderer: this.renderer,
-					enableTileSplitting: true,
-					overlays: [this.swissimageOverlay],
-				})
-			);
+			// TODO: Check how to reuse plugins between tiles sets; currently unsupported (see https://github.com/NASA-AMMOS/3DTilesRendererJS/issues/1264).
+			target.registerPlugin(this.swisstopo3DObjectOverlayPlugin);
 		}
 
 		target.setCamera(this.camera);
 		target.setResolutionFromRenderer(this.camera, this.renderer);
-
-		// Share caches and queues between swisstopo tiles renderers
-		target.lruCache = this.swisstopoBuildingsTiles.lruCache;
-		target.downloadQueue = this.swisstopoBuildingsTiles.downloadQueue;
-		target.parseQueue = this.swisstopoBuildingsTiles.parseQueue;
-		target.processNodeQueue = this.swisstopoBuildingsTiles.processNodeQueue;
 
 		this.earth.add(target.group);
 
@@ -881,14 +925,29 @@ export class ViewerComponent {
 				}
 			});
 		});
+		target.addEventListener('needs-render', () => {
+			this.renderingNeedsUpdate = true;
+		});
 		target.addEventListener('needs-update', () => {
+			this.renderingNeedsUpdate = true;
+		});
+		target.addEventListener('fade-change', () => {
 			this.renderingNeedsUpdate = true;
 		});
 		target.addEventListener('dispose-model', (o: { scene: Object3D }) => disposeManuallyCreatedMaterials(o.scene));
 	}
 
 	private initSwisstopoQuantizedTileset(target: TilesRenderer): void {
-		target.errorTarget = 1;
+		target.errorTarget = 5;
+
+		target.lruCache.maxSize = Infinity;
+		target.lruCache.minSize = 0;
+		target.lruCache.maxBytesSize = GIGABYTE_BYTES;
+		target.lruCache.minBytesSize = target.lruCache.maxBytesSize * (2 / 3);
+		target.lruCache.unloadPercent = 0.1;
+		target.downloadQueue.maxJobs *= 10;
+		target.parseQueue.maxJobs *= 10;
+		target.processNodeQueue.maxJobs *= 10;
 
 		target.registerPlugin(new QuantizedMeshPlugin({ useRecommendedSettings: false }));
 		target.registerPlugin(new UpdateOnChangePlugin());
@@ -918,12 +977,7 @@ export class ViewerComponent {
 		regionsPlugin.addRegion(new SwitzerlandRegion(SWITZERLAND_REGION_CAMERA_ELEVATION_THRESHOLD));
 
 		// TODO: This ImageOverlayPlugin new approach seams to be less performant than with TextureOverlayPlugin. Considering reverting...
-		this.swisstopoOverlayPlugin = new ImageOverlayPlugin({
-			renderer: this.renderer,
-			enableTileSplitting: true,
-			overlays: [this.swissimageOverlay], // Texture with SWISSIMAGE; Google names 2d tiles overlay is added dynamically based on user settings
-		});
-		target.registerPlugin(this.swisstopoOverlayPlugin);
+		target.registerPlugin(this.swisstopoTerrainOverlayPlugin);
 
 		target.setCamera(this.camera);
 		target.setResolutionFromRenderer(this.camera, this.renderer);
@@ -941,7 +995,13 @@ export class ViewerComponent {
 				}
 			});
 		});
+		target.addEventListener('needs-render', () => {
+			this.renderingNeedsUpdate = true;
+		});
 		target.addEventListener('needs-update', () => {
+			this.renderingNeedsUpdate = true;
+		});
+		target.addEventListener('fade-change', () => {
 			this.renderingNeedsUpdate = true;
 		});
 	}
@@ -996,7 +1056,8 @@ export class ViewerComponent {
 		this.stats.update();
 
 		if (this.renderingNeedsUpdate || force) {
-			console.log('RENDERING');
+			// TODO: Have a way to prevent updating tilesets during big position changes like after entering a new location in the search bar (at least at the beginning of the animation). This probably triggers a lot of useless tiles loading.
+			//console.log('RENDERING');
 			this.renderingNeedsUpdate = false;
 
 			this.controls.update();
