@@ -24,4 +24,9 @@ export class SwitzerlandRegion extends BaseRegion {
 			return false;
 		}
 	}
+
+	override calculateDistance(boundingVolume: TileBoundingVolume, tile: Tile, tilesRenderer: TilesRenderer): number {
+		// TODO: Implement?
+		return Infinity;
+	}
 }

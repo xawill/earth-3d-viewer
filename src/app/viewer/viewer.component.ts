@@ -5,7 +5,6 @@ import {
 	BatchedTilesPlugin,
 	TileCompressionPlugin,
 	DebugTilesPlugin,
-	UpdateOnChangePlugin,
 	QuantizedMeshPlugin,
 	LoadRegionPlugin,
 	ImageOverlayPlugin,
@@ -86,6 +85,8 @@ import { OutsideSwitzerlandRegion } from '../utils/OutsideSwitzerlandRegion';
 import { hasMaterialColorOrMap, isMesh } from '../utils/three-type-guards';
 import { DebugGui } from '../utils/debug-gui';
 import { GOOGLE_MAPS_2D_TILES_NAMES_STYLES } from '../config/tiles.config';
+
+const ENABLE_DEBUG_PLUGIN = false;
 
 const GIGABYTE_BYTES = 2 ** 30;
 
@@ -441,7 +442,7 @@ export class ViewerComponent {
 		this.initGoogleTileset(this.googleTiles);
 		this.initSwisstopo3DTileset(
 			this.swisstopoBuildingsTiles,
-			30,
+			40,
 			async (mesh: Mesh) => {
 				// Texture the facades with a random texture and the roofs with swissimage (already applied by ImageOverlayPlugin).
 
@@ -781,11 +782,14 @@ export class ViewerComponent {
 	}
 
 	private initGoogleTileset(target: TilesRenderer): void {
-		target.errorTarget = 50;
+		target.errorTarget = 20;
+
+		target.optimizedLoadStrategy = true;
+		target.loadSiblings = false; // Seems to perform better (higher fps)
 
 		target.lruCache.maxSize = Infinity;
 		target.lruCache.minSize = 0;
-		target.lruCache.maxBytesSize = 0.5 * GIGABYTE_BYTES;
+		target.lruCache.maxBytesSize = 0.8 * GIGABYTE_BYTES;
 		target.lruCache.minBytesSize = target.lruCache.maxBytesSize * (2 / 3);
 		target.lruCache.unloadPercent = 0.1;
 		target.downloadQueue.maxJobs *= 10;
@@ -805,7 +809,6 @@ export class ViewerComponent {
 			})
 		);
 		target.registerPlugin(new TileCompressionPlugin()); // TODO: Needed?
-		target.registerPlugin(new UpdateOnChangePlugin());
 		target.registerPlugin(new UnloadTilesPlugin());
 		target.registerPlugin(new TilesFadePlugin());
 		target.registerPlugin(
@@ -827,9 +830,9 @@ export class ViewerComponent {
 			})
 		);
 		target.registerPlugin(new TileCreasedNormalsPlugin());
-		target.registerPlugin(this.googleDebugTilesPlugin);
-
-		this.googleDebugTilesPlugin.enabled = false;
+		if (ENABLE_DEBUG_PLUGIN) {
+			target.registerPlugin(this.googleDebugTilesPlugin);
+		}
 
 		this.googleTilesOverlayPlugin = new ImageOverlayPlugin({
 			renderer: this.renderer,
@@ -876,6 +879,9 @@ export class ViewerComponent {
 	): void {
 		target.errorTarget = errorTarget;
 
+		target.optimizedLoadStrategy = true;
+		target.loadSiblings = true; // Seems to perform better (higher fps)
+
 		// Share caches and queues between swisstopo tiles renderers
 		target.lruCache = this.swisstopoBuildingsTiles.lruCache;
 		target.downloadQueue = this.swisstopoBuildingsTiles.downloadQueue;
@@ -896,7 +902,6 @@ export class ViewerComponent {
 				dracoLoader: this.dracoLoader,
 			})
 		);
-		target.registerPlugin(new UpdateOnChangePlugin());
 		target.registerPlugin(new UnloadTilesPlugin());
 		target.registerPlugin(new TilesFadePlugin()); // TODO: Doesn't seem to have any noticeable impact
 		if (overlaySwissimage) {
@@ -909,7 +914,7 @@ export class ViewerComponent {
 
 		this.earth.add(target.group);
 
-		target.addEventListener('load-tile-set', (_o: { tileSet?: Object }) => {
+		target.addEventListener('load-tileset', (_o: { tileSet?: Object }) => {
 			target.group.position.copy(SWISS_GEOID_ELLIPSOID_OFFSET);
 		});
 		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
@@ -940,8 +945,11 @@ export class ViewerComponent {
 	private initSwisstopoQuantizedTileset(target: TilesRenderer): void {
 		target.errorTarget = 5;
 
+		target.optimizedLoadStrategy = true;
+		target.loadSiblings = false; // Seems to perform better (higher fps)
+
 		target.lruCache.maxSize = Infinity;
-		target.lruCache.minSize = 0;
+		//target.lruCache.minSize = 10; // FIX: Bug in the library when minSize is too low. Terrain not loading.
 		target.lruCache.maxBytesSize = GIGABYTE_BYTES;
 		target.lruCache.minBytesSize = target.lruCache.maxBytesSize * (2 / 3);
 		target.lruCache.unloadPercent = 0.1;
@@ -950,7 +958,6 @@ export class ViewerComponent {
 		target.processNodeQueue.maxJobs *= 10;
 
 		target.registerPlugin(new QuantizedMeshPlugin({ useRecommendedSettings: false }));
-		target.registerPlugin(new UpdateOnChangePlugin());
 		target.registerPlugin(new UnloadTilesPlugin());
 		target.registerPlugin(new TilesFadePlugin());
 
@@ -968,8 +975,9 @@ export class ViewerComponent {
 				});
 			},
 		});
-		target.registerPlugin(debugPlugin);
-		debugPlugin.enabled = false;
+		if (ENABLE_DEBUG_PLUGIN) {
+			target.registerPlugin(debugPlugin);
+		}
 
 		// Keep tiles only inside Switzerland.
 		const regionsPlugin = new LoadRegionPlugin();
@@ -984,7 +992,7 @@ export class ViewerComponent {
 
 		this.earth.add(target.group);
 
-		target.addEventListener('load-tile-set', () => {
+		target.addEventListener('load-tileset', () => {
 			target.group.position.copy(SWISS_GEOID_ELLIPSOID_OFFSET);
 		});
 		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
