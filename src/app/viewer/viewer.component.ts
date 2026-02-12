@@ -428,7 +428,6 @@ export class ViewerComponent {
 		});
 		this.swisstopoTerrainOverlayPlugin = new ImageOverlayPlugin({
 			renderer: this.renderer,
-			resolution: 512, // TODO: Still not optimal resolution wrt swissimage dataset, but performance is already degreded with 512... Find out why.
 			enableTileSplitting: true,
 			overlays: [this.swissimageOverlay], // Texture with SWISSIMAGE
 		});
@@ -943,19 +942,19 @@ export class ViewerComponent {
 	}
 
 	private initSwisstopoQuantizedTileset(target: TilesRenderer): void {
-		target.errorTarget = 5;
+		target.errorTarget = 2;
 
 		target.optimizedLoadStrategy = true;
-		target.loadSiblings = false; // Seems to perform better (higher fps)
+		target.loadSiblings = true; // Seems to perform better (higher fps)
 
 		target.lruCache.maxSize = Infinity;
-		//target.lruCache.minSize = 10; // FIX: Bug in the library when minSize is too low. Terrain not loading.
-		target.lruCache.maxBytesSize = GIGABYTE_BYTES;
+		//target.lruCache.minSize = 0; // FIX: Bug in the library when minSize is too low. Terrain not loading.
+		target.lruCache.maxBytesSize = 1.5 * GIGABYTE_BYTES;
 		target.lruCache.minBytesSize = target.lruCache.maxBytesSize * (2 / 3);
-		target.lruCache.unloadPercent = 0.1;
-		target.downloadQueue.maxJobs *= 10;
-		target.parseQueue.maxJobs *= 10;
-		target.processNodeQueue.maxJobs *= 10;
+		target.lruCache.unloadPercent = 0.2;
+		target.downloadQueue.maxJobs = 30;
+		target.parseQueue.maxJobs = 10;
+		target.processNodeQueue.maxJobs = 10;
 
 		target.registerPlugin(new QuantizedMeshPlugin({ useRecommendedSettings: false }));
 		target.registerPlugin(new UnloadTilesPlugin());
