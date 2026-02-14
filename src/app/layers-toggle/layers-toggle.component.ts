@@ -14,7 +14,7 @@ export class LayersSettingsComponent {
 	layersSettingsForm = new FormGroup({
 		googleTiles: new FormControl(true, { nonNullable: true }),
 		googleTilesOpacity: new FormControl(1, { nonNullable: true }),
-		swisstopoBuildingsTiles: new FormControl(false, { nonNullable: true }),
+		swisstopoBuildingsTiles: new FormControl(true, { nonNullable: true }),
 		swisstopoVegetationTiles: new FormControl(false, { nonNullable: true }),
 		adminOverlay: new FormControl(false, { nonNullable: true }),
 	});

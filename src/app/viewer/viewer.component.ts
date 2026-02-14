@@ -37,6 +37,11 @@ import {
 	Material,
 	Color,
 	SRGBColorSpace,
+	DataArrayTexture,
+	LinearFilter,
+	LinearMipmapLinearFilter,
+	RGBAFormat,
+	UnsignedByteType,
 } from 'three';
 import {
 	EffectComposer,
@@ -89,6 +94,9 @@ import { GOOGLE_MAPS_2D_TILES_NAMES_STYLES } from '../config/tiles.config';
 const ENABLE_DEBUG_PLUGIN = false;
 
 const GIGABYTE_BYTES = 2 ** 30;
+const LARGE_PRIME_1 = 7381;
+const LARGE_PRIME_2 = 1931;
+const LARGE_PRIME_3 = 8349;
 
 const SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL =
 	'https://3d.geo.admin.ch/ch.swisstopo.swissbuildings3d.3d/v1/tileset.json';
@@ -138,79 +146,25 @@ const REUSABLE_VECTOR3_2 = new Vector3();
 const REUSABLE_VECTOR3_3 = new Vector3();
 const REUSABLE_MATRIX4 = new Matrix4();
 
-const BUILDING_MATERIALS = [
-	'architextures/aluminium-stack-1219-mm-architextures.jpg',
-	'architextures/basalt-stack-2835-mm-architextures.jpg',
-	'architextures/bembridge-antique-staggered-675-mm-architextures.jpg',
-	'architextures/blue-majolica-tile-stack-268-mm-architextures.jpg',
-	'architextures/blundell-staggered-1320-mm-architextures.jpg',
-	'architextures/boardmarked-concrete-staggered-2002-mm-architextures.jpg',
-	'architextures/buff-flemish-675-mm-architextures.jpg',
-	'architextures/calacatta-vena-hexagonal-1617-mm-architextures.jpg',
-	'architextures/concrete-european-fan-5955-mm-architextures.jpg',
-	'architextures/corrugated-aluminium-3000-mm-architextures.jpg',
-	'architextures/crazing-tile-hexagonal-1536-mm-architextures.jpg',
-	'architextures/crazing-tile-stack-612-mm-architextures-2.jpg',
-	'architextures/crazing-tile-stack-612-mm-architextures.jpg',
-	'architextures/crazing-tile-triangle-610-mm-architextures.jpg',
-	'architextures/dragfaced-brick-common-2700-mm-architextures.jpg',
-	'architextures/dragfaced-brick-stretcher-2250-mm-architextures.jpg',
-	'architextures/drill-marked-granite-drystone-1118-mm-architextures.jpg',
-	'architextures/embossed-plaster-1500-mm-architextures.jpg',
-	'architextures/even-drag-brick-basketweave-1320-mm-architextures.jpg',
-	'architextures/even-drag-brick-stretcher-1435-mm-architextures.jpg',
-	'architextures/even-drag-brick-stretcher-4100-mm-architextures.jpg',
-	'architextures/exposed-aggregate-2996-mm-architextures.jpg',
-	'architextures/fine-bush-hammered-concrete-2500-mm-architextures.jpg',
-	'architextures/flagstone-rubble-1948-mm-architextures.jpg',
-	'architextures/flamed-royal-white-granite-300-mm-architextures.jpg',
-	'architextures/granite-crazy-paving-1045-mm-architextures.jpg',
-	'architextures/granite-herringbone-1145-mm-architextures.jpg',
-	'architextures/granite-rounded-rubble-749-mm-architextures.jpg',
-	'architextures/granite-stack-2730-mm-architextures.jpg',
-	'architextures/granite-stack-3630-mm-architextures.jpg',
-	'architextures/granite-stretcher-2420-mm-architextures.jpg',
-	'architextures/green-crazing-tile-leaf-pattern-1920-mm-architextures.jpg',
-	'architextures/grey-victorian-tile-stack-912-mm-architextures.jpg',
-	'architextures/in-situ-concrete-3996-mm-architextures.jpg',
-	'architextures/industrial-brick-common-940-mm-architextures.jpg',
-	'architextures/inkstone-seashell-mosaic-stack-309-mm-architextures.jpg',
-	'architextures/ivory-cedar--walnut-2400-mm-architextures.jpg',
-	'architextures/limestone-crazy-paving-1049-mm-architextures.jpg',
-	'architextures/marble-800-mm-architextures.jpg',
-	'architextures/marmoreal-3000-mm-architextures.jpg',
-	'architextures/marmoreal-stretcher-1204-mm-architextures.jpg',
-	'architextures/matte-stack-2100-mm-architextures.jpg',
-	'architextures/metro-tile-stretcher-1230-mm-architextures.jpg',
-	'architextures/mono-terrazzo-stack-1220-mm-architextures.jpg',
-	'architextures/moss-300-mm-architextures.jpg',
-	'architextures/orange-marble-2500-mm-architextures.jpg',
-	'architextures/oscuro-terrazzo-1750-mm-architextures.jpg',
-	'architextures/pilotage-stack-1819-mm-architextures.jpg',
-	'architextures/pinstripe-glazed-tile-intersecting-circle-1211-mm-architextures.jpg',
-	'architextures/rough-limestone-ashlar-1508-mm-architextures.jpg',
-	'architextures/slate-ashlar-1796-mm-architextures.jpg',
-	'architextures/slate-staggered-2010-mm-architextures.jpg',
-	'architextures/stones-1248-mm-architextures.jpg',
-	'architextures/suyaki-ebony-stretcher-2910-mm-architextures.jpg',
-	'architextures/textured-plaster-1248-mm-architextures.jpg',
-	'architextures/verde-alpi-marble-varied-terrazzo-903-mm-architextures.jpg',
-	'architextures/victorian-glazed-fishscale-1020-mm-architextures.jpg',
-	'architextures/victorian-glazed-stack-1020-mm-architextures.jpg',
-	'architextures/victorian-glazed-stack-804-mm-architextures.jpg',
-	'architextures/weathered-timber-3935-mm-architextures.jpg',
-	'architextures/weathered-timber-staggered-2700-mm-architextures.jpg',
-].map(url =>
-	TEXTURE_LOADER.loadAsync(url).then(texture => {
-		texture.colorSpace = SRGBColorSpace;
-		texture.wrapS = texture.wrapT = RepeatWrapping;
+const BUILDING_FACADE_TEXTURE_URLS = [
+	'sketchuptextureclub/7_wall cladding stone texture-seamless.jpg',
+	'sketchuptextureclub/11_wall cladding stone texture-seamless.jpg',
+	'sketchuptextureclub/25_wall cladding stone texture-seamless.jpg',
+	'sketchuptextureclub/36_wall cladding stone granite texture-seamless.jpg',
+	'sketchuptextureclub/80_wall cladding stone texture-seamless.jpg',
+	'sketchuptextureclub/112_wall cladding stone modern architecture texture-seamless.jpg',
+	'sketchuptextureclub/116_wall cladding stone modern architecture texture-seamless.jpg',
+	'sketchuptextureclub/142_wall cladding stone porfido texture-seamless.jpg',
+	'sketchuptextureclub/161_wall cladding stone porfido texture-seamless.jpg',
+	'sketchuptextureclub/214_wall cladding flagstone porfido texture-seamless.jpg',
+	'sketchuptextureclub/217_wall cladding flagstone porfido texture-seamless.jpg',
+	'sketchuptextureclub/237_wall cladding stone mixed size-seamless.jpg',
+	'sketchuptextureclub/265_wall cladding stone mixed size-seamless.jpg',
+	'sketchuptextureclub/314_silver travertine wall cladding texture-seamless.jpg',
+	'sketchuptextureclub/340_stones wall cladding texture-seamless.jpg',
+];
+const BUILDING_FACADE_TEXTURE_SIZE = 1024; // [px]
 
-		// Use unlit material (MeshBasicMaterial) for proper albedo; required for atmosphere.
-		return new MeshBasicMaterial({
-			map: texture,
-		});
-	})
-);
 const FACADE_UP = new Vector3(0, 0, 1);
 const SWISSBUILDINGS3D_FACADE_COLOR = new Color(0.886, 0.851, 0.565); // Found empirically.
 
@@ -258,7 +212,7 @@ export class ViewerComponent {
 	private sunDirection = new Vector3();
 	private moonDirection = new Vector3();
 
-	private referenceDate = new Date(Date.now()); // TODO: Add UI to set date/time.
+	private referenceDate = new Date().setHours(12, 0, 0, 0); // Today at noon // TODO: Add UI to set date/time.
 
 	private dracoLoader!: DRACOLoader;
 
@@ -282,6 +236,12 @@ export class ViewerComponent {
 
 	private namesOverlay!: GoogleMapsOverlay;
 	private swissimageOverlay!: WMTSTilesOverlay;
+
+	private buildingFacadeTexturesArray!: DataArrayTexture;
+	private buildingFacadeTexturesMaterial = new MeshBasicMaterial({
+		// Use unlit material (MeshBasicMaterial) for proper albedo; required for atmosphere.
+		color: 0xffffff,
+	});
 
 	private googleDebugTilesPlugin!: DebugTilesPlugin;
 	private googleTilesOverlayPlugin!: ImageOverlayPlugin;
@@ -350,6 +310,8 @@ export class ViewerComponent {
 			multisampling: 0,
 		});
 		this.composer.addPass(new RenderPass(this.scene, this.camera));
+
+		this.initBuildingFacadeTextures();
 
 		this.controls = new GlobeControls(this.scene, this.camera, this.renderer.domElement);
 		this.controls.enableDamping = false;
@@ -433,8 +395,7 @@ export class ViewerComponent {
 		});
 		this.swisstopo3DObjectOverlayPlugin = new ImageOverlayPlugin({
 			renderer: this.renderer,
-			resolution: 512, // TODO: Still not optimal resolution wrt swissimage dataset, but performance is already degreded with 512... Find out why.
-			enableTileSplitting: true,
+			enableTileSplitting: false,
 			overlays: [this.swissimageOverlay], // Texture with SWISSIMAGE
 		});
 
@@ -454,6 +415,7 @@ export class ViewerComponent {
 					// Ensure UVs are set.
 					const positions = mesh.geometry.getAttribute('position') as BufferAttribute;
 					const normals = mesh.geometry.getAttribute('normal') as BufferAttribute;
+					const batchIds = mesh.geometry.getAttribute('_batchid') as BufferAttribute;
 
 					let uvs = mesh.geometry.getAttribute('uv') as BufferAttribute;
 					if (!uvs) {
@@ -465,6 +427,9 @@ export class ViewerComponent {
 						const normal = REUSABLE_VECTOR3_2.fromBufferAttribute(normals, vertexIdx);
 						const facadeDirection = REUSABLE_VECTOR3_3.crossVectors(FACADE_UP, normal).normalize();
 						uvs.setXY(vertexIdx, position.dot(facadeDirection), position.z); // NB: z is up, since this is a facade.
+
+						// Offset batchId per tile, to further randomize facade textures accross tiles.
+						batchIds.setX(vertexIdx, batchIds.getX(vertexIdx) + mesh.geometry.userData['tileOffset']);
 					}
 
 					// Properly dispose of original material.
@@ -477,9 +442,7 @@ export class ViewerComponent {
 						}
 					}
 
-					const randomMaterial =
-						await BUILDING_MATERIALS[Math.floor(Math.random() * BUILDING_MATERIALS.length)];
-					mesh.material = randomMaterial;
+					mesh.material = this.buildingFacadeTexturesMaterial;
 				} else {
 					// We need to use unlit material (e.g. MeshBasicMaterial) for proper albedo; required for atmosphere. However, ImageOverlayPlugin uses a StandardMeshMaterial with onBeforeCompile we cannot really migrate to a MeshBasicMaterial. So we keep the original material and just make it not affected by light.
 					removeLightingFromMaterial(mesh.material as MeshStandardMaterial, this.renderer);
@@ -870,6 +833,89 @@ export class ViewerComponent {
 		});
 	}
 
+	private async initBuildingFacadeTextures() {
+		const textureSize = BUILDING_FACADE_TEXTURE_SIZE;
+		const layerSize = textureSize * textureSize * 4;
+		const canvas = document.createElement('canvas');
+		canvas.width = canvas.height = textureSize;
+		const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+		const texturesData = new Uint8Array(layerSize * BUILDING_FACADE_TEXTURE_URLS.length);
+
+		const textures = await Promise.all(BUILDING_FACADE_TEXTURE_URLS.map(url => TEXTURE_LOADER.loadAsync(url)));
+		textures.forEach((texture, i) => {
+			ctx.clearRect(0, 0, textureSize, textureSize);
+			ctx.drawImage(texture.image, 0, 0, textureSize, textureSize);
+			const imageData = ctx.getImageData(0, 0, textureSize, textureSize);
+			texturesData.set(imageData.data, i * layerSize);
+		});
+		this.buildingFacadeTexturesArray = new DataArrayTexture(
+			texturesData,
+			textureSize,
+			textureSize,
+			BUILDING_FACADE_TEXTURE_URLS.length
+		);
+		this.buildingFacadeTexturesArray.colorSpace = SRGBColorSpace;
+		this.buildingFacadeTexturesArray.format = RGBAFormat;
+		this.buildingFacadeTexturesArray.type = UnsignedByteType;
+		this.buildingFacadeTexturesArray.minFilter = LinearMipmapLinearFilter;
+		this.buildingFacadeTexturesArray.magFilter = LinearFilter;
+		this.buildingFacadeTexturesArray.wrapS = this.buildingFacadeTexturesArray.wrapT = RepeatWrapping;
+		this.buildingFacadeTexturesArray.generateMipmaps = true;
+		this.buildingFacadeTexturesArray.needsUpdate = true;
+
+		this.buildingFacadeTexturesMaterial.onBeforeCompile = shader => {
+			shader.uniforms['buildingTextures'] = { value: this.buildingFacadeTexturesArray };
+			shader.uniforms['textureCount'] = { value: BUILDING_FACADE_TEXTURE_URLS.length };
+
+			shader.vertexShader = shader.vertexShader
+				.replace(
+					'#include <common>',
+					`
+					#include <common>
+					attribute float _batchid;
+
+					varying float batchid;
+					varying vec2 vUvCustom;
+					`
+				)
+				.replace(
+					'#include <uv_vertex>',
+					`
+					#include <uv_vertex>
+					batchid = _batchid;
+					vUvCustom = uv;
+					`
+				);
+
+			shader.fragmentShader = shader.fragmentShader
+				.replace(
+					'#include <common>',
+					`
+					#include <common>
+
+					uniform sampler2DArray buildingTextures;
+					uniform float textureCount;
+
+					varying float batchid;
+					varying vec2 vUvCustom;
+					`
+				)
+				.replace(
+					'#include <map_fragment>',
+					`
+					int texIndex = int(mod(float(batchid), float(textureCount)));
+
+					vec4 texColor = texture(
+						buildingTextures,
+						vec3(vUvCustom, float(texIndex))
+					);
+
+					diffuseColor *= texColor;
+					`
+				);
+		};
+	}
+
 	private initSwisstopo3DTileset(
 		target: TilesRenderer,
 		errorTarget: number,
@@ -888,7 +934,7 @@ export class ViewerComponent {
 		target.processNodeQueue = this.swisstopoBuildingsTiles.processNodeQueue;
 
 		target.lruCache.maxSize = Infinity;
-		target.lruCache.minSize = 0;
+		//target.lruCache.minSize = 0;
 		target.lruCache.maxBytesSize = 1.5 * GIGABYTE_BYTES;
 		target.lruCache.minBytesSize = target.lruCache.maxBytesSize * (2 / 3);
 		target.lruCache.unloadPercent = 0.1;
@@ -917,10 +963,17 @@ export class ViewerComponent {
 			target.group.position.copy(SWISS_GEOID_ELLIPSOID_OFFSET);
 		});
 		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
+			const [, tileZoomLevel, tileIndexX, tileIndexY] = o.tile.content!.uri.match(/(\d+)\/(\d+)\/(\d+)\./)!;
+			const tileOffset = // Produce pseudo-random but deterministic integer per tile from its coordinates
+				(parseInt(tileIndexX) * LARGE_PRIME_1) ^
+				(parseInt(tileIndexY) * LARGE_PRIME_2) ^
+				(parseInt(tileZoomLevel) * LARGE_PRIME_3);
+
 			o.scene.traverse(child => {
 				if (isMesh(child)) {
 					// Compute missing normals for proper lighting.
 					child.geometry.computeVertexNormals();
+					child.geometry.userData['tileOffset'] = tileOffset;
 
 					// Give a chance to caller to run customizations on the mesh.
 					if (meshCustomizationCallback) {
