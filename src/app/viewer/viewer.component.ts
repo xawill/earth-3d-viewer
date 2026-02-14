@@ -68,6 +68,7 @@ import { AddressSearchComponent } from '../address-search/address-search.compone
 import { environment } from '../../environments/environment';
 import gsap from 'gsap';
 import { LayersSettingsComponent, LayersSettings } from '../layers-toggle/layers-toggle.component';
+import { TimeOfDaySettingsComponent, TimeOfDaySettings } from '../time-of-day/time-of-day.component';
 import {
 	colorsAreAlmostEqual,
 	disposeMaterial,
@@ -193,11 +194,13 @@ const SWISSTOPO_TLM_MATERIAL = new MeshBasicMaterial({
 
 @Component({
 	selector: 'app-viewer',
-	imports: [AddressSearchComponent, LayersSettingsComponent],
+	imports: [AddressSearchComponent, LayersSettingsComponent, TimeOfDaySettingsComponent],
 	templateUrl: './viewer.component.html',
 	styleUrl: './viewer.component.css',
 })
 export class ViewerComponent {
+	referenceDate = new Date(); // Now
+
 	private scene!: Scene;
 	private renderer!: WebGLRenderer;
 	private composer!: EffectComposer;
@@ -211,8 +214,6 @@ export class ViewerComponent {
 
 	private sunDirection = new Vector3();
 	private moonDirection = new Vector3();
-
-	private referenceDate = new Date().setHours(12, 0, 0, 0); // Today at noon // TODO: Add UI to set date/time.
 
 	private dracoLoader!: DRACOLoader;
 
@@ -516,7 +517,6 @@ export class ViewerComponent {
 					this.swisstopoTlmTiles,
 					this.swisstopoVegetationTiles,
 					this.aerialPerspective,
-					this.referenceDate,
 					() => (this.renderingNeedsUpdate = true)
 				);
 			})*/
@@ -737,6 +737,15 @@ export class ViewerComponent {
 		}
 
 		this.renderingNeedsUpdate = true;
+	}
+
+	updateTimeOfDay($event: TimeOfDaySettings) {
+		if ($event.totalMinutes !== undefined) {
+			const hour = Math.floor($event.totalMinutes / 60);
+			const minute = $event.totalMinutes % 60;
+			this.referenceDate.setHours(hour, minute, 0, 0);
+			this.renderingNeedsUpdate = true;
+		}
 	}
 
 	currentPositionLatLng(): LatLng {

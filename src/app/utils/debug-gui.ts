@@ -13,17 +13,11 @@ export class DebugGui extends GUI {
 		swisstopoTlmTiles: TilesRenderer,
 		swisstopoVegetationTiles: TilesRenderer,
 		aerialPerspective: AerialPerspectiveEffect,
-		referenceDate: Date,
 		onValueChange: () => void
 	) {
 		super({ width: 300 });
 
 		this.add(camera, 'fov', 0, 90).onChange(onValueChange);
-
-		this.add({ hours: referenceDate.getHours() }, 'hours', 0, 24).onChange(value => {
-			referenceDate.setHours(value);
-			onValueChange();
-		});
 
 		this.add(aerialPerspective, 'albedoScale', 0, 2).onChange(onValueChange);
 		this.add(aerialPerspective, 'correctAltitude').onChange(onValueChange);
