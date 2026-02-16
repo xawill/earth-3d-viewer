@@ -5,6 +5,7 @@ import { isMesh } from './three-type-guards';
 
 // Plugin to generate creased normals for the tiles
 export class TileCreasedNormalsPlugin {
+	// TODO: Implement a web-worker version.
 	processTileModel(scene: any) {
 		scene.traverse((c: any) => {
 			if (c.geometry) {

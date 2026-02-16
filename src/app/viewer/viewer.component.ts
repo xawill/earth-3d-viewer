@@ -1,4 +1,4 @@
-import { Component, ElementRef, ViewChild } from '@angular/core';
+import { Component, ElementRef, signal, ViewChild } from '@angular/core';
 import { GlobeControls, Tile, TilesRenderer, WGS84_RADIUS } from '3d-tiles-renderer';
 import {
 	GoogleCloudAuthPlugin,
@@ -14,6 +14,7 @@ import {
 	GLTFExtensionsPlugin,
 	GoogleMapsOverlay,
 	WMTSCapabilitiesLoader,
+	WMTSCapabilitiesResult,
 } from '3d-tiles-renderer/plugins';
 import {
 	Group,
@@ -106,7 +107,7 @@ const SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL = 'https://3d.geo.admin.ch/ch.sw
 const SWISSTOPO_NAMES_3D_TILES_TILESET_URL =
 	'https://3d.geo.admin.ch/3d-tiles/ch.swisstopo.swissnames3d.3d/20180716/tileset.json';
 const SWISSTOPO_TERRAIN_3D_TILES_TILESET_URL = 'https://3d.geo.admin.ch/ch.swisstopo.terrain.3d/v1/layer.json';
-const SWISSTOPO_SWISSIMAGE_GET_CAPABILITIES_URL = 'https://wmts.geo.admin.ch/EPSG/3857/1.0.0/WMTSCapabilities.xml';
+const SWISSTOPO_WMTS_CAPABILITIES_URL = 'https://wmts.geo.admin.ch/EPSG/3857/1.0.0/WMTSCapabilities.xml?lang=en'; //To test/debug tiles indexing: https://codepen.io/xawill/pen/Wbrveqb
 
 // TODO: Au clic, date d'image: https://api3.geo.admin.ch/rest/services/all/MapServer/identify?geometry=678250,213000&geometryFormat=geojson&geometryType=esriGeometryPoint&imageDisplay=1391,1070,96&lang=fr&layers=all:ch.swisstopo.images-swissimage-dop10.metadata&mapExtent=100,100,100,100&returnGeometry=true&tolerance=5
 
@@ -236,7 +237,8 @@ export class ViewerComponent {
 	private swisstopoTerrainTiles = new TilesRenderer(SWISSTOPO_TERRAIN_3D_TILES_TILESET_URL);
 
 	private namesOverlay!: GoogleMapsOverlay;
-	private swissimageOverlay!: WMTSTilesOverlay;
+	private swisstopoOverlay!: WMTSTilesOverlay;
+	swisstopoWMTSCapabilities = signal<WMTSCapabilitiesResult | null>(null);
 
 	private buildingFacadeTexturesArray!: DataArrayTexture;
 	private buildingFacadeTexturesMaterial = new MeshBasicMaterial({
@@ -364,6 +366,8 @@ export class ViewerComponent {
 		this.stats.showPanel(0);
 		document.body.appendChild(this.stats.dom);
 
+		this.initGoogleTileset(this.googleTiles);
+
 		this.namesOverlay = new GoogleMapsOverlay({
 			apiToken: environment.GOOGLE_MAPS_3D_TILES_API_KEY,
 			autoRefreshToken: true,
@@ -379,11 +383,12 @@ export class ViewerComponent {
 			opacity: 1,
 		});
 
-		this.swissimageOverlay = new WMTSTilesOverlay({
-			// Max zoom level is 20. To test/debug tiles indexing: https://codepen.io/xawill/pen/Wbrveqb
-			// url: "https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/{Time}/3857/{TileMatrix}/{TileCol}/{TileRow}.jpeg",
-			capabilities: await new WMTSCapabilitiesLoader().loadAsync(SWISSTOPO_SWISSIMAGE_GET_CAPABILITIES_URL),
-			layer: 'ch.swisstopo.swissimage', // 			layer: 'ch.swisstopo.pixelkarte-farbe',
+		this.swisstopoWMTSCapabilities.set(
+			await new WMTSCapabilitiesLoader().loadAsync(SWISSTOPO_WMTS_CAPABILITIES_URL)
+		);
+		this.swisstopoOverlay = new WMTSTilesOverlay({
+			capabilities: this.swisstopoWMTSCapabilities(),
+			layer: 'ch.swisstopo.swissimage',
 			style: 'default',
 			dimensions: { Time: 'current' },
 			color: 0xffffff,
@@ -392,15 +397,14 @@ export class ViewerComponent {
 		this.swisstopoTerrainOverlayPlugin = new ImageOverlayPlugin({
 			renderer: this.renderer,
 			enableTileSplitting: true,
-			overlays: [this.swissimageOverlay], // Texture with SWISSIMAGE
+			overlays: [this.swisstopoOverlay],
 		});
 		this.swisstopo3DObjectOverlayPlugin = new ImageOverlayPlugin({
 			renderer: this.renderer,
 			enableTileSplitting: false,
-			overlays: [this.swissimageOverlay], // Texture with SWISSIMAGE
+			overlays: [this.swisstopoOverlay],
 		});
 
-		this.initGoogleTileset(this.googleTiles);
 		this.initSwisstopo3DTileset(
 			this.swisstopoBuildingsTiles,
 			40,
@@ -734,6 +738,30 @@ export class ViewerComponent {
 			this.googleTilesOverlayPlugin?.deleteOverlay(this.namesOverlay);
 			this.swisstopoTerrainOverlayPlugin?.deleteOverlay(this.namesOverlay);
 			// TODO: Dispose tiles
+		}
+
+		if ($event.swisstopoOverlay?.layer && $event.swisstopoOverlay?.timeDimension) {
+			// Delete old overlay and recreate new one
+			this.swisstopoTerrainOverlayPlugin?.deleteOverlay(this.swisstopoOverlay);
+
+			const timeDimension =
+				$event.swisstopoOverlay.timeDimension === this.referenceDate.getFullYear().toString()
+					? 'current'
+					: $event.swisstopoOverlay.timeDimension; // Use "current" overlay if current year is selected. // TODO: Check if year dimension indeed exists in capabilities and if not, default to "current".
+			const layer =
+				timeDimension === 'current' && $event.swisstopoOverlay.layer === 'ch.swisstopo.swissimage-product'
+					? 'ch.swisstopo.swissimage'
+					: $event.swisstopoOverlay.layer;
+			this.swisstopoOverlay = new WMTSTilesOverlay({
+				capabilities: this.swisstopoWMTSCapabilities(),
+				layer,
+				style: 'default',
+				dimensions: { Time: timeDimension },
+				color: 0xffffff,
+				opacity: 1,
+			});
+
+			this.swisstopoTerrainOverlayPlugin?.addOverlay(this.swisstopoOverlay);
 		}
 
 		this.renderingNeedsUpdate = true;

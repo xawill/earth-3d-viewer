@@ -57,6 +57,47 @@
 					<span class="ms-3 text-sm font-medium text-white">Administrative overlay</span>
 				</label>
 			</div>
+
+			<!-- swisstopo overlay layer and time dimension selection -->
+			@if (swisstopoWMTSCapabilities()) {
+				<div>
+					<h3 class="mt-6 mb-3">Imagery</h3>
+
+					<div>
+						<label for="swisstopo-overlay-layer-select" class="mb-2 block text-sm font-medium text-white"
+							>Layer</label
+						>
+						<select
+							id="swisstopo-overlay-layer-select"
+							formControlName="swisstopoOverlayLayer"
+							class="block w-full rounded-lg border border-gray-300 bg-gray-700 px-3 py-2 text-white placeholder-gray-400 focus:border-teal-500 focus:ring-teal-500">
+							@for (layer of availableWMTSOverlayLayers(); track layer.identifier) {
+								<option [value]="layer.identifier">
+									{{ layer.title }}
+								</option>
+							}
+						</select>
+					</div>
+
+					<div class="mt-3">
+						<label
+							for="swisstopo-overlay-layer--time-select"
+							class="mb-2 block text-sm font-medium text-white"
+							>Year</label
+						>
+						<select
+							id="swisstopo-overlay-layer--time-select"
+							formControlName="swisstopoOverlayTimeDimension"
+							class="block w-full rounded-lg border border-gray-300 bg-gray-700 px-3 py-2 text-white placeholder-gray-400 focus:border-teal-500 focus:ring-teal-500">
+							@for (year of availableTimeDimensionsForSelectedWMTSOverlayLayer(); track year) {
+								<option [value]="year">
+									{{ year === 'current' ? 'Latest' : year }}
+								</option>
+							}
+						</select>
+					</div>
+				</div>
+			}
 		</form>
 	</div>
 </div>
