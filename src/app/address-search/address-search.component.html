@@ -1,17 +1,18 @@
 <div class="relative flex flex-col justify-center overflow-hidden text-white">
 	<div class="relative sm:mx-auto sm:max-w-lg">
 		<div class="mx-auto">
-			<form [formGroup]="addressSearchForm" (ngSubmit)="search()">
+			<form (ngSubmit)="search()">
 				<div class="peer relative mx-auto w-max rounded-full bg-gray-800 shadow-xl">
 					<input
 						(keydown)="onKeydown($event)"
-						formControlName="address"
+						[value]="addressInput()"
+						(input)="onInputChange($event)"
 						type="search"
-						class="peer relative z-10 h-12 w-12 cursor-pointer rounded-full border bg-transparent pl-12 pr-0 outline-none focus:w-80 focus:cursor-text focus:border-white focus:pl-16 focus:pr-20" />
+						class="peer relative z-10 h-12 w-12 cursor-pointer rounded-full border bg-transparent pr-0 pl-12 outline-none focus:w-80 focus:cursor-text focus:border-white focus:pr-20 focus:pl-16" />
 					<button
 						type="submit"
-						class="absolute bottom-2 right-2.5 top-2 z-10 hidden rounded-full bg-white p-2 text-sm font-medium leading-none text-gray-800 peer-focus:inline-block"
-						[disabled]="!addressSearchForm.valid"
+						class="absolute top-2 right-2.5 bottom-2 z-10 hidden rounded-full bg-white p-2 text-sm leading-none font-medium text-gray-800 peer-focus:inline-block"
+						[disabled]="!isInputValid()"
 						(pointerdown)="$event.preventDefault()">
 						Search
 					</button>
@@ -29,14 +30,14 @@
 					</svg>
 				</div>
 
-				@if (predictions$ | async; as predictions) {
+				@if (suggestions(); as suggestions) {
 					<ul
 						class="ml-12 hidden w-64 divide-y divide-white rounded-xl border border-white bg-gray-800 px-4 text-white peer-focus-within:inline-block">
-						@for (prediction of predictions; track prediction.placePrediction?.placeId) {
+						@for (suggestion of suggestions; track suggestion.placePrediction?.placeId) {
 							<li class="mt-0 overflow-hidden py-2">
-								<a class="inline-block w-full cursor-pointer" (mousedown)="selectSuggestion(prediction)"
-									>{{ prediction.placePrediction?.mainText }},
-									{{ prediction.placePrediction?.secondaryText }}</a
+								<a class="inline-block w-full cursor-pointer" (mousedown)="selectSuggestion(suggestion)"
+									>{{ suggestion.placePrediction?.mainText }},
+									{{ suggestion.placePrediction?.secondaryText }}</a
 								>
 							</li>
 						}

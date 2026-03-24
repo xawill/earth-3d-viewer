@@ -1,42 +1,53 @@
-import { Component, EventEmitter, Output, inject, input } from '@angular/core';
-import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { debounceTime, EMPTY, map, Observable, switchMap } from 'rxjs';
-import { AsyncPipe } from '@angular/common';
+import { Component, inject, input, output, signal, computed, effect } from '@angular/core';
 import { LatLng } from '../utils/map-utils';
 import { GoogleMapsService } from '../services/google-maps.service';
 
 const INPUT_AUTOCOMPLETE_DEBOUNCE_TIME = 500; // [ms]
+const MIN_INPUT_LENGTH_FOR_AUTOCOMPLETE = 3;
 
 @Component({
 	selector: 'address-search',
-	imports: [ReactiveFormsModule, AsyncPipe],
+	imports: [],
 	templateUrl: './address-search.component.html',
 	styleUrl: './address-search.component.css',
 })
 export class AddressSearchComponent {
 	private googleMapsService = inject(GoogleMapsService);
 
-	@Output() searchedCoords = new EventEmitter<{ coords: google.maps.LatLng; elevation: number }>();
+	searchedCoords = output<{ coords: google.maps.LatLng; elevation: number }>();
 
 	originCoords = input<LatLng>({ lat: 0, lng: 0 });
 
-	addressSearchForm = new FormGroup({
-		address: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
-	});
-	predictions$: Observable<google.maps.places.AutocompleteSuggestion[] | null>;
+	addressInput = signal('');
+	suggestions = signal<google.maps.places.AutocompleteSuggestion[] | null>(null);
+	isSearching = signal(false);
+	isInputValid = computed(() => this.addressInput().trim().length >= MIN_INPUT_LENGTH_FOR_AUTOCOMPLETE);
 
 	constructor() {
-		this.predictions$ = this.addressSearchForm.valueChanges.pipe(
-			debounceTime(INPUT_AUTOCOMPLETE_DEBOUNCE_TIME),
-			switchMap(values => {
-				if (values.address) {
-					return this.googleMapsService.findSuggestionsForInput(values.address, this.originCoords());
-				} else {
-					return EMPTY;
+		// Watch address input changes for autocomplete
+		effect((onCleanup) => {
+			const input = this.addressInput();
+			const originCoords = this.originCoords();
+
+			let cancelled = false;
+			const debounceTimer = setTimeout(async () => {
+				try {
+					const suggestionsResult = await this.googleMapsService.findSuggestionsForInput(
+						input,
+						originCoords
+					);
+					this.suggestions.set(suggestionsResult ? suggestionsResult.suggestions : null);
+				} catch {
+					this.suggestions.set(null);
 				}
-			}),
-			map(suggestions => (suggestions ? suggestions.suggestions : null))
-		);
+			}, INPUT_AUTOCOMPLETE_DEBOUNCE_TIME);
+
+			onCleanup(() => {
+				cancelled = true;
+				clearTimeout(debounceTimer);
+				this.suggestions.set(null);
+			});
+		});
 	}
 
 	selectSuggestion(suggestion: google.maps.places.AutocompleteSuggestion): void {
@@ -45,15 +56,18 @@ export class AddressSearchComponent {
 			if (suggestion.placePrediction.secondaryText) {
 				selectedAddress = selectedAddress + ', ' + suggestion.placePrediction.secondaryText.text;
 			}
-			this.addressSearchForm.controls.address.setValue(selectedAddress);
+			this.addressInput.set(selectedAddress);
+			this.suggestions.set(null);
 			this.search();
 		}
 	}
 
 	search(): void {
-		if (this.addressSearchForm.value.address) {
+		const address = this.addressInput().trim();
+		if (address.length >= MIN_INPUT_LENGTH_FOR_AUTOCOMPLETE) {
+			this.isSearching.set(true);
 			this.googleMapsService
-				.findCoordsForAddress(this.addressSearchForm.value.address)
+				.findCoordsForAddress(address)
 				.then(response => {
 					if (response.results.length > 0) {
 						const coords = response.results[0].geometry.location;
@@ -64,9 +78,13 @@ export class AddressSearchComponent {
 				})
 				.then(([coords, elevation]) => {
 					this.searchedCoords.emit({ coords, elevation });
-					this.addressSearchForm.controls.address.reset();
+					this.addressInput.set('');
+					this.suggestions.set(null);
+					this.isSearching.set(false);
 				})
-				.catch(_error => {});
+				.catch(_error => {
+					this.isSearching.set(false);
+				});
 		}
 	}
 
@@ -78,8 +96,15 @@ export class AddressSearchComponent {
 					(event.currentTarget as HTMLElement).blur();
 					break;
 				case 'Escape':
+					this.addressInput.set('');
+					this.suggestions.set(null);
 					(event.currentTarget as HTMLElement).blur();
 			}
 		}
+	}
+
+	onInputChange(event: Event): void {
+		const input = (event.target as HTMLInputElement).value;
+		this.addressInput.set(input);
 	}
 }

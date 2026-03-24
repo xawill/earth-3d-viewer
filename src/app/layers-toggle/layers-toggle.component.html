@@ -10,12 +10,17 @@
 	</button>
 
 	<div id="dropdownInformation" class="z-10 hidden w-96 divide-y divide-white rounded-lg bg-gray-800 shadow">
-		<form class="space-y-4 px-4 py-3 text-sm text-white" [formGroup]="layersSettingsForm">
+		<div class="space-y-4 px-4 py-3 text-sm text-white">
 			<h3>3D tiles</h3>
 
 			<div>
 				<label class="inline-flex cursor-pointer items-center">
-					<input type="checkbox" formControlName="googleTiles" value="" class="peer sr-only" />
+					<input
+						type="checkbox"
+						[checked]="googleTilesEnabled()"
+						(change)="onGoogleTilesToggle($event)"
+						value=""
+						class="peer sr-only" />
 					<div
 						class="peer relative h-6 w-11 rounded-full bg-gray-200 peer-checked:bg-teal-600 peer-focus:ring-4 peer-focus:ring-teal-300 after:absolute after:start-[2px] after:top-0.5 after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white rtl:peer-checked:after:-translate-x-full"></div>
 					<span class="ms-3 text-sm font-medium text-white">Google photorealistic tiles</span>
@@ -25,8 +30,8 @@
 					<input
 						id="google-tiles-opacity-range"
 						type="range"
-						formControlName="googleTilesOpacity"
-						value="1"
+						[value]="googleTilesOpacity()"
+						(change)="onGoogleTilesOpacityChange($event)"
 						min="0"
 						max="1"
 						step="0.01"
@@ -35,7 +40,12 @@
 			</div>
 			<div>
 				<label class="inline-flex cursor-pointer items-center">
-					<input type="checkbox" formControlName="swisstopoBuildingsTiles" value="" class="peer sr-only" />
+					<input
+						type="checkbox"
+						[checked]="swisstopoBuildingsTilesEnabled()"
+						(change)="onBuildingsTilesToggle($event)"
+						value=""
+						class="peer sr-only" />
 					<div
 						class="peer relative h-6 w-11 rounded-full bg-gray-200 peer-checked:bg-teal-600 peer-focus:ring-4 peer-focus:ring-teal-300 after:absolute after:start-[2px] after:top-0.5 after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white rtl:peer-checked:after:-translate-x-full"></div>
 					<span class="ms-3 text-sm font-medium text-white">swisstopo swissBUILDINGS3D tiles</span>
@@ -43,7 +53,12 @@
 			</div>
 			<div>
 				<label class="inline-flex cursor-pointer items-center">
-					<input type="checkbox" formControlName="swisstopoVegetationTiles" value="" class="peer sr-only" />
+					<input
+						type="checkbox"
+						[checked]="swisstopoVegetationTilesEnabled()"
+						(change)="onVegetationTilesToggle($event)"
+						value=""
+						class="peer sr-only" />
 					<div
 						class="peer relative h-6 w-11 rounded-full bg-gray-200 peer-checked:bg-teal-600 peer-focus:ring-4 peer-focus:ring-teal-300 after:absolute after:start-[2px] after:top-0.5 after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white rtl:peer-checked:after:-translate-x-full"></div>
 					<span class="ms-3 text-sm font-medium text-white">swisstopo vegetation 3D tiles</span>
@@ -51,7 +66,12 @@
 			</div>
 			<div>
 				<label class="inline-flex cursor-pointer items-center">
-					<input type="checkbox" formControlName="adminOverlay" value="" class="peer sr-only" />
+					<input
+						type="checkbox"
+						[checked]="adminOverlayEnabled()"
+						(change)="onAdminOverlayToggle($event)"
+						value=""
+						class="peer sr-only" />
 					<div
 						class="peer relative h-6 w-11 rounded-full bg-gray-200 peer-checked:bg-teal-600 peer-focus:ring-4 peer-focus:ring-teal-300 after:absolute after:start-[2px] after:top-0.5 after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white rtl:peer-checked:after:-translate-x-full"></div>
 					<span class="ms-3 text-sm font-medium text-white">Administrative overlay</span>
@@ -69,7 +89,8 @@
 						>
 						<select
 							id="swisstopo-overlay-layer-select"
-							formControlName="swisstopoOverlayLayer"
+							[value]="selectedOverlayLayer()"
+							(change)="onOverlayLayerChange($event)"
 							class="block w-full rounded-lg border border-gray-300 bg-gray-700 px-3 py-2 text-white placeholder-gray-400 focus:border-teal-500 focus:ring-teal-500">
 							@for (layer of availableWMTSOverlayLayers(); track layer.identifier) {
 								<option [value]="layer.identifier">
@@ -87,7 +108,8 @@
 						>
 						<select
 							id="swisstopo-overlay-layer--time-select"
-							formControlName="swisstopoOverlayTimeDimension"
+							[value]="selectedTimeDimension()"
+							(change)="onTimeDimensionChange($event)"
 							class="block w-full rounded-lg border border-gray-300 bg-gray-700 px-3 py-2 text-white placeholder-gray-400 focus:border-teal-500 focus:ring-teal-500">
 							@for (year of availableTimeDimensionsForSelectedWMTSOverlayLayer(); track year) {
 								<option [value]="year">
@@ -98,6 +120,6 @@
 					</div>
 				</div>
 			}
-		</form>
+		</div>
 	</div>
 </div>

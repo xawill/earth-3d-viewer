@@ -1,62 +1,46 @@
-import { Component, EventEmitter, Output, Input, HostListener, OnInit } from '@angular/core';
-import { FormGroup, FormControl, ReactiveFormsModule } from '@angular/forms';
+import { Component, input, output, signal, computed, effect, HostListener } from '@angular/core';
 import { initFlowbite } from 'flowbite';
 
 @Component({
 	selector: 'time-of-day-settings',
-	imports: [ReactiveFormsModule],
+	imports: [],
 	templateUrl: './time-of-day.component.html',
 	styleUrl: './time-of-day.component.css',
 })
-export class TimeOfDaySettingsComponent implements OnInit {
-	@Input() referenceDate: Date = new Date();
-	@Output() timeOfDaySettings = new EventEmitter<TimeOfDaySettings>();
+export class TimeOfDaySettingsComponent {
+	timeOfDaySettings = output<TimeOfDaySettings>();
 
-	timeOfDayForm = new FormGroup({
-		totalMinutes: new FormControl(720, { nonNullable: true }), // 720 minutes = 12:00
+	referenceDate = input<Date>(new Date());
+
+	totalMinutes = signal(720); // 720 minutes = 12h00
+	timeDisplay = computed(() => {
+		const totalMins = this.totalMinutes();
+		const hour = Math.floor(totalMins / 60);
+		const minute = totalMins % 60;
+		return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
 	});
 
 	constructor() {
-		// Emit time of day settings changes
-		this.timeOfDayForm.valueChanges.subscribe(values => {
-			this.timeOfDaySettings.emit({
-				totalMinutes: values.totalMinutes?.valueOf(),
-			});
+		effect(() => {
+			const referenceDate = this.referenceDate();
+			if (referenceDate) {
+				this.totalMinutes.set(referenceDate.getHours() * 60 + referenceDate.getMinutes());
+			}
 		});
-	}
 
-	ngOnInit(): void {
-		this.timeOfDayForm.patchValue(
-			{ totalMinutes: this.referenceDate.getHours() * 60 + this.referenceDate.getMinutes() },
-			{ emitEvent: true }
-		);
+		effect(() => {
+			const totalMinutes = this.totalMinutes();
+			this.timeOfDaySettings.emit({ totalMinutes });
+		});
 	}
 
 	ngAfterViewInit() {
 		initFlowbite();
 	}
 
-	getTimeDisplay(): string {
-		const totalMinutes = this.timeOfDayForm.get('totalMinutes')?.value ?? 720;
-		const hour = Math.floor(totalMinutes / 60);
-		const minute = totalMinutes % 60;
-		return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-	}
-
-	@HostListener('touchmove', ['$event'])
-	onTouchMove(event: TouchEvent): void {
-		// Prevent scrolling when interacting with the component
-		if ((event.target as HTMLElement).closest('input[type="range"]')) {
-			event.preventDefault();
-		}
-	}
-
-	@HostListener('wheel', ['$event'])
-	onWheel(event: WheelEvent): void {
-		// Prevent wheel scrolling on the slider
-		if ((event.target as HTMLElement).closest('input[type="range"]')) {
-			event.preventDefault();
-		}
+	onTimeSliderChange(event: Event): void {
+		const value = (event.target as HTMLInputElement).value;
+		this.totalMinutes.set(+value);
 	}
 }
 

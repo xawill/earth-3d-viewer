@@ -1,17 +1,16 @@
-import { Component, EventEmitter, Output, Input, computed, effect, input } from '@angular/core';
-import { FormGroup, FormControl, ReactiveFormsModule } from '@angular/forms';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { Component, input, output, signal, computed, effect } from '@angular/core';
 import { initFlowbite } from 'flowbite';
 import { WMTSCapabilitiesResult } from '3d-tiles-renderer/plugins';
 
 @Component({
 	selector: 'layers-settings',
-	imports: [ReactiveFormsModule],
+	imports: [],
 	templateUrl: './layers-toggle.component.html',
 	styleUrl: './layers-toggle.component.css',
 })
 export class LayersSettingsComponent {
-	@Output() layersSettings = new EventEmitter<LayersSettings>();
+	layersSettings = output<LayersSettings>();
+
 	swisstopoWMTSCapabilities = input<WMTSCapabilitiesResult | null>(null);
 
 	private readonly SWISSTOPO_OVERLAY_AVAILABLE_LAYERS = [
@@ -38,31 +37,24 @@ export class LayersSettingsComponent {
 		//'ch.bfs.betriebszaehlungen-beschaeftigte_vollzeitaequivalente',
 	];
 
-	layersSettingsForm = new FormGroup({
-		googleTiles: new FormControl(true, { nonNullable: true }),
-		googleTilesOpacity: new FormControl(1, { nonNullable: true }),
-		swisstopoBuildingsTiles: new FormControl(true, { nonNullable: true }),
-		swisstopoVegetationTiles: new FormControl(false, { nonNullable: true }),
-		adminOverlay: new FormControl(false, { nonNullable: true }),
-		swisstopoOverlayLayer: new FormControl('ch.swisstopo.swissimage-product', { nonNullable: true }),
-		swisstopoOverlayTimeDimension: new FormControl('current', { nonNullable: true }),
-	});
+	googleTilesEnabled = signal(true);
+	googleTilesOpacity = signal(1);
+	swisstopoBuildingsTilesEnabled = signal(true);
+	swisstopoVegetationTilesEnabled = signal(false);
+	adminOverlayEnabled = signal(false);
+	selectedOverlayLayer = signal('ch.swisstopo.swissimage-product');
+	selectedTimeDimension = signal('current');
 
 	availableWMTSOverlayLayers = computed(() => {
-		if (!this.swisstopoWMTSCapabilities()?.layers) {
+		const caps = this.swisstopoWMTSCapabilities();
+		if (!caps?.layers) {
 			return [];
 		}
-		return this.swisstopoWMTSCapabilities()?.layers.filter(layer =>
-			this.SWISSTOPO_OVERLAY_AVAILABLE_LAYERS.includes(layer.identifier)
-		);
-	});
-
-	selectedWMTSOverlayLayer = toSignal(this.layersSettingsForm.get('swisstopoOverlayLayer')!.valueChanges, {
-		initialValue: this.layersSettingsForm.get('swisstopoOverlayLayer')!.value,
+		return caps.layers.filter(layer => this.SWISSTOPO_OVERLAY_AVAILABLE_LAYERS.includes(layer.identifier));
 	});
 
 	availableTimeDimensionsForSelectedWMTSOverlayLayer = computed(() => {
-		const selectedLayer = this.selectedWMTSOverlayLayer();
+		const selectedLayer = this.selectedOverlayLayer();
 		if (!selectedLayer || !this.swisstopoWMTSCapabilities()?.layers) {
 			return [];
 		}
@@ -84,50 +76,47 @@ export class LayersSettingsComponent {
 		// Update selected time dimension when layer or available time dimensions change
 		effect(() => {
 			this.swisstopoWMTSCapabilities();
-			this.selectedWMTSOverlayLayer();
+			this.selectedOverlayLayer();
 
-			const currentTimeDimension = this.layersSettingsForm.get('swisstopoOverlayTimeDimension')?.value;
+			const currentTimeDimension = this.selectedTimeDimension();
 			const defaultTimeDimension = this.getDefaultTimeDimensionForLayer();
 			const availableTimeDimensions = this.availableTimeDimensionsForSelectedWMTSOverlayLayer();
 			if (currentTimeDimension && !availableTimeDimensions.includes(currentTimeDimension)) {
-				this.layersSettingsForm
-					.get('swisstopoOverlayTimeDimension')
-					?.setValue(defaultTimeDimension, { emitEvent: true });
+				this.selectedTimeDimension.set(defaultTimeDimension);
 			}
 		});
-		/*this.layersSettingsForm.get('swisstopoOverlayLayer')!.valueChanges.subscribe(() => {
-			const defaultTimeDimension = this.getDefaultTimeDimensionForLayer();
-			this.layersSettingsForm
-				.get('swisstopoOverlayTimeDimension')
-				?.setValue(defaultTimeDimension, { emitEvent: true });
-		});*/
 
-		// Emit layers settings changes
-		this.layersSettingsForm.valueChanges.subscribe(values => {
+		// Emit aggregated layers settings when any signal changes
+		effect(() => {
+			// Access all signals to track when any of them change
+			this.googleTilesEnabled();
+			this.googleTilesOpacity();
+			this.swisstopoBuildingsTilesEnabled();
+			this.swisstopoVegetationTilesEnabled();
+			this.adminOverlayEnabled();
+			this.selectedOverlayLayer();
+			this.selectedTimeDimension();
+
 			this.layersSettings.emit({
 				googleTiles: {
-					enabled: values.googleTiles?.valueOf(),
-					opacity: values.googleTilesOpacity?.valueOf(),
+					enabled: this.googleTilesEnabled(),
+					opacity: this.googleTilesOpacity(),
 				},
 				swisstopoBuildingsTiles: {
-					enabled: values.swisstopoBuildingsTiles?.valueOf(),
+					enabled: this.swisstopoBuildingsTilesEnabled(),
 				},
 				swisstopoVegetationTiles: {
-					enabled: values.swisstopoVegetationTiles?.valueOf(),
+					enabled: this.swisstopoVegetationTilesEnabled(),
 				},
 				adminOverlay: {
-					enabled: values.adminOverlay?.valueOf(),
+					enabled: this.adminOverlayEnabled(),
 				},
 				swisstopoOverlay: {
-					layer: values.swisstopoOverlayLayer?.valueOf(),
-					timeDimension: values.swisstopoOverlayTimeDimension?.valueOf(),
+					layer: this.selectedOverlayLayer(),
+					timeDimension: this.selectedTimeDimension(),
 				},
 			});
 		});
-	}
-
-	ngOnInit(): void {
-		this.layersSettingsForm.reset({}, { emitEvent: true });
 	}
 
 	ngAfterViewInit() {
@@ -145,8 +134,38 @@ export class LayersSettingsComponent {
 			return 'current';
 		}
 
-		// Otherwise, use the most recent year (last item in the array)
+		// Otherwise, use the most recent year (first item in the array)
 		return availableTimeDimensions[0];
+	}
+
+	// Event handlers for template
+	onGoogleTilesToggle(event: Event): void {
+		const checked = (event.target as HTMLInputElement).checked;
+		this.googleTilesEnabled.set(checked);
+	}
+	onGoogleTilesOpacityChange(event: Event) {
+		const value = (event.target as HTMLSelectElement).value;
+		this.googleTilesOpacity.set(+value);
+	}
+	onBuildingsTilesToggle(event: Event): void {
+		const checked = (event.target as HTMLInputElement).checked;
+		this.swisstopoBuildingsTilesEnabled.set(checked);
+	}
+	onVegetationTilesToggle(event: Event): void {
+		const checked = (event.target as HTMLInputElement).checked;
+		this.swisstopoVegetationTilesEnabled.set(checked);
+	}
+	onAdminOverlayToggle(event: Event): void {
+		const checked = (event.target as HTMLInputElement).checked;
+		this.adminOverlayEnabled.set(checked);
+	}
+	onOverlayLayerChange(event: Event): void {
+		const value = (event.target as HTMLSelectElement).value;
+		this.selectedOverlayLayer.set(value);
+	}
+	onTimeDimensionChange(event: Event): void {
+		const value = (event.target as HTMLSelectElement).value;
+		this.selectedTimeDimension.set(value);
 	}
 }
 
