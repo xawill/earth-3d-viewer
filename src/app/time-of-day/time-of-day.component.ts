@@ -1,5 +1,4 @@
-import { Component, input, output, signal, computed, effect, HostListener } from '@angular/core';
-import { initFlowbite } from 'flowbite';
+import { Component, input, output, signal, computed, effect } from '@angular/core';
 
 @Component({
 	selector: 'time-of-day-settings',
@@ -17,7 +16,7 @@ export class TimeOfDaySettingsComponent {
 		const totalMins = this.totalMinutes();
 		const hour = Math.floor(totalMins / 60);
 		const minute = totalMins % 60;
-		return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+		return `${hour.toString().padStart(2, '0')}h${minute.toString().padStart(2, '0')}`;
 	});
 
 	constructor() {
@@ -32,10 +31,6 @@ export class TimeOfDaySettingsComponent {
 			const totalMinutes = this.totalMinutes();
 			this.timeOfDaySettings.emit({ totalMinutes });
 		});
-	}
-
-	ngAfterViewInit() {
-		initFlowbite();
 	}
 
 	onTimeSliderChange(event: Event): void {

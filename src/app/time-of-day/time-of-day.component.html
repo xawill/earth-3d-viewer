@@ -1,30 +1,14 @@
-<div class="relative">
-	<button
-		id="dropdownTimeButton"
-		data-dropdown-toggle="dropdownTime"
-		data-dropdown-placement="top"
-		data-dropdown-offset-skidding="150"
-		class="inline-flex min-w-36 justify-center rounded-lg bg-gray-800 px-5 py-2.5 text-center text-sm font-medium text-white ring-1 ring-white hover:bg-gray-800 focus:outline-none"
-		type="button">
-		Time: {{ timeDisplay() }}
-	</button>
-
-	<div id="dropdownTime" class="z-10 hidden w-80 divide-y divide-white rounded-lg bg-gray-800 shadow">
-		<div class="space-y-4 px-4 py-3 text-sm text-white">
-			<h3>Time of Day</h3>
-
-			<div>
-				<label for="time-range" class="mb-2 block text-sm text-white">{{ timeDisplay() }}</label>
-				<input
-					id="time-range"
-					type="range"
-					[value]="totalMinutes()"
-					(input)="onTimeSliderChange($event)"
-					min="0"
-					max="1439"
-					step="1"
-					class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-200" />
-			</div>
-		</div>
-	</div>
+<div class="flex items-center gap-3 rounded-lg bg-gray-800 px-4 py-2.5 ring-1 ring-white">
+	<label for="time-range" class="text-sm font-medium whitespace-nowrap text-white tabular-nums"
+		>Time: {{ timeDisplay() }}</label
+	>
+	<input
+		id="time-range"
+		type="range"
+		[value]="totalMinutes()"
+		(input)="onTimeSliderChange($event)"
+		min="0"
+		max="1439"
+		step="1"
+		class="h-2 min-w-32 flex-1 cursor-pointer appearance-none rounded-lg bg-gray-200" />
 </div>
