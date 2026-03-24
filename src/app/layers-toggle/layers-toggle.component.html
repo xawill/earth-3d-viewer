@@ -81,7 +81,7 @@
 			<!-- swisstopo overlay layer and time dimension selection -->
 			@if (swisstopoWMTSCapabilities()) {
 				<div>
-					<h3 class="mt-6 mb-3">Imagery</h3>
+					<h3 class="mt-6 mb-3">swisstopo imagery</h3>
 
 					<div>
 						<label for="swisstopo-overlay-layer-select" class="mb-2 block text-sm font-medium text-white"
@@ -91,9 +91,12 @@
 							id="swisstopo-overlay-layer-select"
 							[value]="selectedOverlayLayer()"
 							(change)="onOverlayLayerChange($event)"
-							class="block w-full rounded-lg border border-gray-300 bg-gray-700 px-3 py-2 text-white placeholder-gray-400 focus:border-teal-500 focus:ring-teal-500">
+							class="block w-full rounded-lg border border-gray-300 bg-gray-700 px-3 py-2 text-sm text-white placeholder-gray-400 focus:border-teal-500 focus:ring-teal-500">
 							@for (layer of availableWMTSOverlayLayers(); track layer.identifier) {
-								<option [value]="layer.identifier">
+								<option
+									class="text-sm"
+									[value]="layer.identifier"
+									[selected]="layer.identifier === selectedOverlayLayer()">
 									{{ layer.title }}
 								</option>
 							}
@@ -110,9 +113,9 @@
 							id="swisstopo-overlay-layer--time-select"
 							[value]="selectedTimeDimension()"
 							(change)="onTimeDimensionChange($event)"
-							class="block w-full rounded-lg border border-gray-300 bg-gray-700 px-3 py-2 text-white placeholder-gray-400 focus:border-teal-500 focus:ring-teal-500">
+							class="block w-full rounded-lg border border-gray-300 bg-gray-700 px-3 py-2 text-sm text-white placeholder-gray-400 focus:border-teal-500 focus:ring-teal-500">
 							@for (year of availableTimeDimensionsForSelectedWMTSOverlayLayer(); track year) {
-								<option [value]="year">
+								<option class="" text-sm [value]="year" [selected]="year === selectedTimeDimension()">
 									{{ year === 'current' ? 'Latest' : year }}
 								</option>
 							}

@@ -2,6 +2,31 @@ import { Component, input, output, signal, computed, effect } from '@angular/cor
 import { initFlowbite } from 'flowbite';
 import { WMTSCapabilitiesResult } from '3d-tiles-renderer/plugins';
 
+const SWISSTOPO_OVERLAY_AVAILABLE_LAYERS = [
+	'ch.swisstopo.swissimage-product',
+	'ch.swisstopo.pixelkarte-farbe-pk25.noscale',
+	'ch.bazl.luftfahrtkarten-icao',
+	'ch.bfs.volkszaehlung-bevoelkerungsstatistik_einwohner',
+	'ch.bafu.tranquillity-karte',
+	//'ch.bafu.gefaehrdungskarte-oberflaechenabfluss',
+	//'ch.bafu.laerm-strassenlaerm_nacht',
+	//'ch.pronatura.naturschutzgebiete',
+	//'ch.are.erreichbarkeit-oev',
+	//'ch.swisstopo.swisstlm3d-wanderwege',
+	//'ch.bazl.einschraenkungen-drohnen',
+	//'ch.are.reisezeit-agglomerationen-oev',
+	//'ch.bafu.schutzgebiete-luftfahrt',
+	//'ch.bfe.ladebedarfswelt-fahrzeuge',
+	//'ch.bfe.fernwaerme-nachfrage_wohn_dienstleistungsgebaeude',
+	//'ch.bfe.solarenergie-eignung-daecher',
+	//'ch.bakom.anschlussart-glasfaser',
+	//'ch.bakom.standorte-mobilfunkanlagen',
+	//'ch.vbs.panzerverschiebungsrouten',
+	//'ch.blw.bewaesserungsbeduerftigkeit',
+	//'ch.bfs.betriebszaehlungen-beschaeftigte_vollzeitaequivalente',
+];
+const DEFAULT_SWISSTOPO_OVERLAY_LAYER = 'ch.swisstopo.swissimage-product';
+
 @Component({
 	selector: 'layers-settings',
 	imports: [],
@@ -13,36 +38,12 @@ export class LayersSettingsComponent {
 
 	swisstopoWMTSCapabilities = input<WMTSCapabilitiesResult | null>(null);
 
-	private readonly SWISSTOPO_OVERLAY_AVAILABLE_LAYERS = [
-		'ch.swisstopo.swissimage-product',
-		'ch.swisstopo.pixelkarte-farbe-pk25.noscale',
-		'ch.bazl.luftfahrtkarten-icao',
-		'ch.bfs.volkszaehlung-bevoelkerungsstatistik_einwohner',
-		'ch.bafu.tranquillity-karte',
-		//'ch.bafu.gefaehrdungskarte-oberflaechenabfluss',
-		//'ch.bafu.laerm-strassenlaerm_nacht',
-		//'ch.pronatura.naturschutzgebiete',
-		//'ch.are.erreichbarkeit-oev',
-		//'ch.swisstopo.swisstlm3d-wanderwege',
-		//'ch.bazl.einschraenkungen-drohnen',
-		//'ch.are.reisezeit-agglomerationen-oev',
-		//'ch.bafu.schutzgebiete-luftfahrt',
-		//'ch.bfe.ladebedarfswelt-fahrzeuge',
-		//'ch.bfe.fernwaerme-nachfrage_wohn_dienstleistungsgebaeude',
-		//'ch.bfe.solarenergie-eignung-daecher',
-		//'ch.bakom.anschlussart-glasfaser',
-		//'ch.bakom.standorte-mobilfunkanlagen',
-		//'ch.vbs.panzerverschiebungsrouten',
-		//'ch.blw.bewaesserungsbeduerftigkeit',
-		//'ch.bfs.betriebszaehlungen-beschaeftigte_vollzeitaequivalente',
-	];
-
 	googleTilesEnabled = signal(true);
 	googleTilesOpacity = signal(1);
 	swisstopoBuildingsTilesEnabled = signal(true);
 	swisstopoVegetationTilesEnabled = signal(false);
 	adminOverlayEnabled = signal(false);
-	selectedOverlayLayer = signal('ch.swisstopo.swissimage-product');
+	selectedOverlayLayer = signal(DEFAULT_SWISSTOPO_OVERLAY_LAYER);
 	selectedTimeDimension = signal('current');
 
 	availableWMTSOverlayLayers = computed(() => {
@@ -50,7 +51,7 @@ export class LayersSettingsComponent {
 		if (!caps?.layers) {
 			return [];
 		}
-		return caps.layers.filter(layer => this.SWISSTOPO_OVERLAY_AVAILABLE_LAYERS.includes(layer.identifier));
+		return caps.layers.filter(layer => SWISSTOPO_OVERLAY_AVAILABLE_LAYERS.includes(layer.identifier));
 	});
 
 	availableTimeDimensionsForSelectedWMTSOverlayLayer = computed(() => {
