@@ -213,9 +213,6 @@ export class ViewerComponent {
 	private earth = new Group();
 	private aerialPerspective!: AerialPerspectiveEffect;
 
-	private sunDirection = new Vector3();
-	private moonDirection = new Vector3();
-
 	private dracoLoader!: DRACOLoader;
 
 	private renderingNeedsUpdate = true;
@@ -1161,6 +1158,8 @@ export class ViewerComponent {
 		this.composer.addPass(new EffectPass(this.camera, new ToneMappingEffect({ mode: ToneMappingMode.AGX })));
 		this.composer.addPass(new EffectPass(this.camera, new SMAAEffect()));
 		this.composer.addPass(new EffectPass(this.camera, new DitheringEffect()));
+
+		this.aerialPerspective.worldToECEFMatrix.copy(this.earth.matrixWorld).invert();
 	}
 
 	private render(force = false): void {
@@ -1197,9 +1196,6 @@ export class ViewerComponent {
 				this.swisstopoTerrainTiles.update();
 			}
 
-			getSunDirectionECEF(this.referenceDate, this.sunDirection);
-			getMoonDirectionECEF(this.referenceDate, this.moonDirection);
-
 			this.composer.passes.forEach(pass => {
 				// Update effect materials with current camera settings
 				if (pass.fullscreenMaterial instanceof EffectMaterial) {
@@ -1208,14 +1204,8 @@ export class ViewerComponent {
 			});
 
 			if (this.aerialPerspective) {
-				this.aerialPerspective.sunDirection.copy(this.sunDirection);
-				this.aerialPerspective.moonDirection.copy(this.moonDirection);
-
-				this.aerialPerspective.ellipsoidMatrix.copy(this.earth.matrixWorld).setPosition(0, 0, 0);
-				const inverseEllipsoidMatrix = REUSABLE_MATRIX4.copy(this.aerialPerspective.ellipsoidMatrix).invert();
-				this.aerialPerspective.ellipsoidCenter
-					.setFromMatrixPosition(this.earth.matrixWorld)
-					.applyMatrix4(inverseEllipsoidMatrix);
+				getSunDirectionECEF(this.referenceDate, this.aerialPerspective.sunDirection);
+				getMoonDirectionECEF(this.referenceDate, this.aerialPerspective.moonDirection);
 			}
 
 			this.composer.render();
