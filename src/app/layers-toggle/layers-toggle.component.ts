@@ -163,6 +163,7 @@ export class LayersSettingsComponent {
 	onOverlayLayerChange(event: Event): void {
 		const value = (event.target as HTMLSelectElement).value;
 		this.selectedOverlayLayer.set(value);
+		this.selectedTimeDimension.set(this.getDefaultTimeDimensionForLayer());
 	}
 	onTimeDimensionChange(event: Event): void {
 		const value = (event.target as HTMLSelectElement).value;
