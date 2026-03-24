@@ -236,6 +236,9 @@ export class ViewerComponent {
 	private swisstopoNamesTiles = new TilesRenderer(SWISSTOPO_NAMES_3D_TILES_TILESET_URL);
 	private swisstopoTerrainTiles = new TilesRenderer(SWISSTOPO_TERRAIN_3D_TILES_TILESET_URL);
 
+	private tilesRenderersInitialized = false;
+	private pendingLayersSettingsUpdate: LayersSettings | null = null;
+
 	private namesOverlay!: GoogleMapsOverlay;
 	private swisstopoOverlay!: WMTSTilesOverlay;
 	swisstopoWMTSCapabilities = signal<WMTSCapabilitiesResult | null>(null);
@@ -386,23 +389,15 @@ export class ViewerComponent {
 		this.swisstopoWMTSCapabilities.set(
 			await new WMTSCapabilitiesLoader().loadAsync(SWISSTOPO_WMTS_CAPABILITIES_URL)
 		);
-		this.swisstopoOverlay = new WMTSTilesOverlay({
-			capabilities: this.swisstopoWMTSCapabilities(),
-			layer: 'ch.swisstopo.swissimage',
-			style: 'default',
-			dimensions: { Time: 'current' },
-			color: 0xffffff,
-			opacity: 1,
-		});
 		this.swisstopoTerrainOverlayPlugin = new ImageOverlayPlugin({
 			renderer: this.renderer,
 			enableTileSplitting: true,
-			overlays: [this.swisstopoOverlay],
+			overlays: [], // NB: swisstopoOverlay is added when selected layers init
 		});
 		this.swisstopo3DObjectOverlayPlugin = new ImageOverlayPlugin({
 			renderer: this.renderer,
 			enableTileSplitting: false,
-			overlays: [this.swisstopoOverlay],
+			overlays: [], // NB: swisstopoOverlay is added when selected layers init
 		});
 
 		this.initSwisstopo3DTileset(
@@ -524,6 +519,13 @@ export class ViewerComponent {
 					() => (this.renderingNeedsUpdate = true)
 				);
 			})*/
+
+		this.tilesRenderersInitialized = true;
+		// Process delayed layers settings update.
+		if (this.pendingLayersSettingsUpdate) {
+			this.updateLayers(this.pendingLayersSettingsUpdate);
+			this.pendingLayersSettingsUpdate = null;
+		}
 	}
 
 	async zoomTo(destination: { coords: google.maps.LatLng; elevation: number }) {
@@ -704,6 +706,12 @@ export class ViewerComponent {
 	}
 
 	updateLayers($event: LayersSettings) {
+		if (!this.tilesRenderersInitialized) {
+			// Wait for tiles renderers to be initialized before applying layers settings.
+			this.pendingLayersSettingsUpdate = $event;
+			return;
+		}
+
 		if ($event.googleTiles?.enabled === true) {
 			this.googleTiles.group.visible = true;
 		} else if ($event.googleTiles?.enabled === false) {
@@ -741,9 +749,6 @@ export class ViewerComponent {
 		}
 
 		if ($event.swisstopoOverlay?.layer && $event.swisstopoOverlay?.timeDimension) {
-			// Delete old overlay and recreate new one
-			this.swisstopoTerrainOverlayPlugin?.deleteOverlay(this.swisstopoOverlay);
-
 			const timeDimension =
 				$event.swisstopoOverlay.timeDimension === this.referenceDate.getFullYear().toString()
 					? 'current'
@@ -752,7 +757,8 @@ export class ViewerComponent {
 				timeDimension === 'current' && $event.swisstopoOverlay.layer === 'ch.swisstopo.swissimage-product'
 					? 'ch.swisstopo.swissimage'
 					: $event.swisstopoOverlay.layer;
-			this.swisstopoOverlay = new WMTSTilesOverlay({
+
+			const newOverlay = new WMTSTilesOverlay({
 				capabilities: this.swisstopoWMTSCapabilities(),
 				layer,
 				style: 'default',
@@ -760,8 +766,20 @@ export class ViewerComponent {
 				color: 0xffffff,
 				opacity: 1,
 			});
+			this.swisstopoTerrainOverlayPlugin?.addOverlay(newOverlay);
 
-			this.swisstopoTerrainOverlayPlugin?.addOverlay(this.swisstopoOverlay);
+			// If exisiting overlay, wait for new overlay to be loaded before deleting the old one.
+			if (this.swisstopoOverlay) {
+				const cleanupOldOverlay = () => {
+					this.swisstopoTerrainTiles.removeEventListener('needs-update', cleanupOldOverlay);
+					this.swisstopoTerrainOverlayPlugin?.deleteOverlay(this.swisstopoOverlay);
+					this.swisstopoOverlay = newOverlay;
+				};
+				this.swisstopoTerrainTiles.addEventListener('needs-update', cleanupOldOverlay);
+			} else {
+				this.swisstopoOverlay = newOverlay;
+				this.swisstopo3DObjectOverlayPlugin?.addOverlay(newOverlay);
+			}
 		}
 
 		this.renderingNeedsUpdate = true;
