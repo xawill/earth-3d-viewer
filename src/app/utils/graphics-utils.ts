@@ -15,7 +15,7 @@ export const NULL_COMPARISON_TOLERANCE = 1e-3;
 
 export const TEXTURE_LOADER = new TextureLoader();
 
-export const UV_DEBUG_TEXTURE = TEXTURE_LOADER.loadAsync('debug_uv_grid_opengl.jpg').then(texture => {
+export const UV_DEBUG_TEXTURE = TEXTURE_LOADER.loadAsync('assets/debug_uv_grid_opengl.jpg').then(texture => {
 	texture.colorSpace = SRGBColorSpace;
 	texture.repeat.setScalar(1 / 4);
 	texture.wrapS = texture.wrapT = RepeatWrapping;

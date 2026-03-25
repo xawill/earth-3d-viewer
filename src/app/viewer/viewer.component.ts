@@ -170,7 +170,7 @@ const BUILDING_FACADE_TEXTURE_SIZE = 1024; // [px]
 const FACADE_UP = new Vector3(0, 0, 1);
 const SWISSBUILDINGS3D_FACADE_COLOR = new Color(0.886, 0.851, 0.565); // Found empirically.
 
-const TREE_FOLIAGE_MATERIAL = TEXTURE_LOADER.loadAsync('tree-foliage.jpg').then(texture => {
+const TREE_FOLIAGE_MATERIAL = TEXTURE_LOADER.loadAsync('assets/tree-foliage.jpg').then(texture => {
 	texture.colorSpace = SRGBColorSpace;
 	texture.wrapS = texture.wrapT = RepeatWrapping;
 
@@ -179,7 +179,7 @@ const TREE_FOLIAGE_MATERIAL = TEXTURE_LOADER.loadAsync('tree-foliage.jpg').then(
 		map: texture,
 	});
 });
-const TREE_TRUNK_MATERIAL = TEXTURE_LOADER.loadAsync('tree-trunk.jpg').then(texture => {
+const TREE_TRUNK_MATERIAL = TEXTURE_LOADER.loadAsync('assets/tree-trunk.jpg').then(texture => {
 	texture.colorSpace = SRGBColorSpace;
 	texture.wrapS = texture.wrapT = RepeatWrapping;
 
