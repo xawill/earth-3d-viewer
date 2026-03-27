@@ -1,0 +1,243 @@
+import { Injectable } from '@angular/core';
+import {
+	BufferAttribute,
+	Color,
+	DataArrayTexture,
+	LinearFilter,
+	LinearMipmapLinearFilter,
+	Material,
+	Mesh,
+	MeshBasicMaterial,
+	MeshStandardMaterial,
+	RepeatWrapping,
+	RGBAFormat,
+	SRGBColorSpace,
+	UnsignedByteType,
+	Vector3,
+	WebGLRenderer,
+} from 'three';
+import {
+	BUILDING_FACADE_TEXTURE_SIZE,
+	BUILDING_FACADE_TEXTURE_URLS,
+	FACADE_UP,
+	SWISSBUILDINGS3D_FACADE_COLOR,
+} from '../config/tiles.config';
+import {
+	colorsAreAlmostEqual,
+	disposeMaterial,
+	removeLightingFromMaterial,
+	TEXTURE_LOADER,
+} from '../utils/graphics-utils';
+import { hasMaterialColorOrMap } from '../utils/three-type-guards';
+
+const REUSABLE_VECTOR3_1 = new Vector3();
+const REUSABLE_VECTOR3_2 = new Vector3();
+const REUSABLE_VECTOR3_3 = new Vector3();
+
+const TREE_FOLIAGE_MATERIAL = TEXTURE_LOADER.loadAsync('assets/tree-foliage.jpg').then(texture => {
+	texture.colorSpace = SRGBColorSpace;
+	texture.wrapS = texture.wrapT = RepeatWrapping;
+
+	// Use unlit material (MeshBasicMaterial) for proper albedo; required for atmosphere.
+	return new MeshBasicMaterial({
+		map: texture,
+	});
+});
+const TREE_TRUNK_MATERIAL = TEXTURE_LOADER.loadAsync('assets/tree-trunk.jpg').then(texture => {
+	texture.colorSpace = SRGBColorSpace;
+	texture.wrapS = texture.wrapT = RepeatWrapping;
+
+	// Use unlit material (MeshBasicMaterial) for proper albedo; required for atmosphere.
+	return new MeshBasicMaterial({
+		map: texture,
+	});
+});
+
+const SWISSTOPO_TLM_MATERIAL = new MeshBasicMaterial({
+	color: 0xb9b0aa,
+});
+
+@Injectable({ providedIn: 'root' })
+export class ModelTextureService {
+	private buildingFacadeTexturesArray!: DataArrayTexture;
+	buildingFacadeTexturesMaterial = new MeshBasicMaterial({
+		// Use unlit material (MeshBasicMaterial) for proper albedo; required for atmosphere.
+		color: 0xffffff,
+	});
+
+	async init(): Promise<void> {
+		const textureSize = BUILDING_FACADE_TEXTURE_SIZE;
+		const layerSize = textureSize * textureSize * 4;
+		const canvas = document.createElement('canvas');
+		canvas.width = canvas.height = textureSize;
+		const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+		const texturesData = new Uint8Array(layerSize * BUILDING_FACADE_TEXTURE_URLS.length);
+
+		const textures = await Promise.all(BUILDING_FACADE_TEXTURE_URLS.map(url => TEXTURE_LOADER.loadAsync(url)));
+		textures.forEach((texture, i) => {
+			ctx.clearRect(0, 0, textureSize, textureSize);
+			ctx.drawImage(texture.image, 0, 0, textureSize, textureSize);
+			const imageData = ctx.getImageData(0, 0, textureSize, textureSize);
+			texturesData.set(imageData.data, i * layerSize);
+		});
+		this.buildingFacadeTexturesArray = new DataArrayTexture(
+			texturesData,
+			textureSize,
+			textureSize,
+			BUILDING_FACADE_TEXTURE_URLS.length
+		);
+		this.buildingFacadeTexturesArray.colorSpace = SRGBColorSpace;
+		this.buildingFacadeTexturesArray.format = RGBAFormat;
+		this.buildingFacadeTexturesArray.type = UnsignedByteType;
+		this.buildingFacadeTexturesArray.minFilter = LinearMipmapLinearFilter;
+		this.buildingFacadeTexturesArray.magFilter = LinearFilter;
+		this.buildingFacadeTexturesArray.wrapS = this.buildingFacadeTexturesArray.wrapT = RepeatWrapping;
+		this.buildingFacadeTexturesArray.generateMipmaps = true;
+		this.buildingFacadeTexturesArray.needsUpdate = true;
+
+		this.buildingFacadeTexturesMaterial.onBeforeCompile = shader => {
+			shader.uniforms['buildingTextures'] = { value: this.buildingFacadeTexturesArray };
+			shader.uniforms['textureCount'] = { value: BUILDING_FACADE_TEXTURE_URLS.length };
+
+			shader.vertexShader = shader.vertexShader
+				.replace(
+					'#include <common>',
+					`
+					#include <common>
+					attribute float _batchid;
+
+					varying float batchid;
+					varying vec2 vUvCustom;
+					`
+				)
+				.replace(
+					'#include <uv_vertex>',
+					`
+					#include <uv_vertex>
+					batchid = _batchid;
+					vUvCustom = uv;
+					`
+				);
+
+			shader.fragmentShader = shader.fragmentShader
+				.replace(
+					'#include <common>',
+					`
+					#include <common>
+
+					uniform sampler2DArray buildingTextures;
+					uniform float textureCount;
+
+					varying float batchid;
+					varying vec2 vUvCustom;
+					`
+				)
+				.replace(
+					'#include <map_fragment>',
+					`
+					int texIndex = int(mod(float(batchid), float(textureCount)));
+
+					vec4 texColor = texture(
+						buildingTextures,
+						vec3(vUvCustom, float(texIndex))
+					);
+
+					diffuseColor *= texColor;
+					`
+				);
+		};
+	}
+
+	createBuildingMeshCustomizationCallback(renderer: WebGLRenderer): (mesh: Mesh) => void {
+		return (mesh: Mesh) => {
+			// Texture the facades with a random texture and the roofs with swissimage (already applied by ImageOverlayPlugin).
+
+			const originalMaterial = mesh.material as Material;
+
+			const isFacade =
+				hasMaterialColorOrMap(originalMaterial) &&
+				colorsAreAlmostEqual(originalMaterial.color!, SWISSBUILDINGS3D_FACADE_COLOR);
+			if (isFacade) {
+				// Ensure UVs are set.
+				const positions = mesh.geometry.getAttribute('position') as BufferAttribute;
+				const normals = mesh.geometry.getAttribute('normal') as BufferAttribute;
+				const batchIds = mesh.geometry.getAttribute('_batchid') as BufferAttribute;
+
+				let uvs = mesh.geometry.getAttribute('uv') as BufferAttribute;
+				if (!uvs) {
+					uvs = new BufferAttribute(new Float32Array(positions.count * 2), 2);
+					mesh.geometry.setAttribute('uv', uvs);
+				}
+				for (let vertexIdx = 0; vertexIdx < positions.count; vertexIdx++) {
+					const position = REUSABLE_VECTOR3_1.fromBufferAttribute(positions, vertexIdx);
+					const normal = REUSABLE_VECTOR3_2.fromBufferAttribute(normals, vertexIdx);
+					const facadeDirection = REUSABLE_VECTOR3_3.crossVectors(FACADE_UP, normal).normalize();
+					uvs.setXY(vertexIdx, position.dot(facadeDirection), position.z); // NB: z is up, since this is a facade.
+
+					// Offset batchId per tile, to further randomize facade textures accross tiles.
+					batchIds.setX(vertexIdx, batchIds.getX(vertexIdx) + mesh.geometry.userData['tileOffset']);
+				}
+
+				// Properly dispose of original material.
+				const matToDispose = mesh.material as Material;
+				if (matToDispose) {
+					if (Array.isArray(matToDispose)) {
+						matToDispose.forEach(mat => disposeMaterial(mat));
+					} else {
+						disposeMaterial(matToDispose);
+					}
+				}
+
+				mesh.material = this.buildingFacadeTexturesMaterial;
+			} else {
+				// We need to use unlit material (e.g. MeshBasicMaterial) for proper albedo; required for atmosphere. However, ImageOverlayPlugin uses a StandardMeshMaterial with onBeforeCompile we cannot really migrate to a MeshBasicMaterial. So we keep the original material and just make it not affected by light.
+				removeLightingFromMaterial(mesh.material as MeshStandardMaterial, renderer);
+			}
+		};
+	}
+
+	createTlmMeshCustomizationCallback(): (mesh: Mesh) => void {
+		return (mesh: Mesh) => {
+			// Having all objects share the same material. Also making sure that the material is unlit for proper rendering with atmosphere support.
+			// TODO: In the original dataset, different colors are applied to different structures. Let's try to find a way to recover them while still reusing the different materials.
+			// TODO: Even better: texture with SWISSIMAGE (once performance issues are solved).
+			const originalMaterial = mesh.material as MeshStandardMaterial;
+
+			// Properly dispose of original material.
+			if (originalMaterial) {
+				if (Array.isArray(originalMaterial)) {
+					originalMaterial.forEach(mat => disposeMaterial(mat));
+				} else {
+					disposeMaterial(originalMaterial);
+				}
+			}
+
+			mesh.material = SWISSTOPO_TLM_MATERIAL;
+		};
+	}
+
+	createVegetationMeshCustomizationCallback(): (mesh: Mesh) => Promise<void> {
+		return async (mesh: Mesh) => {
+			// Texture the trees with the same shared material.
+			// TODO: Properly implement InstancedMesh, as there are clearly too many trees objects in the scene (is InstancedMesh really used!?). o.scene has two children (foliage + trunk).
+
+			const originalMaterial = mesh.material as MeshStandardMaterial;
+			const textureWidth = originalMaterial.map?.source.data.width;
+
+			// Properly dispose of original material.
+			if (originalMaterial) {
+				if (Array.isArray(originalMaterial)) {
+					originalMaterial.forEach(mat => disposeMaterial(mat));
+				} else {
+					disposeMaterial(originalMaterial);
+				}
+			}
+
+			if (textureWidth === 81) {
+				mesh.material = await TREE_FOLIAGE_MATERIAL;
+			} else {
+				mesh.material = await TREE_TRUNK_MATERIAL;
+			}
+		};
+	}
+}
