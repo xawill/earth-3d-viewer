@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
-import { TilesRenderer } from '3d-tiles-renderer';
-import { Intersection, MathUtils, Object3D, Raycaster, Vector2, Vector3 } from 'three';
+import { Ellipsoid } from '3d-tiles-renderer';
+import { MathUtils, Matrix4, Object3D, Ray, Raycaster, Vector2, Vector3 } from 'three';
 import gsap from 'gsap';
 import { SceneManagerService } from './scene-manager.service';
 import { pow2Animation } from '../utils/graphics-utils';
@@ -23,13 +23,15 @@ import {
 const REUSABLE_VECTOR2 = new Vector2();
 const REUSABLE_VECTOR3_1 = new Vector3();
 const REUSABLE_VECTOR3_2 = new Vector3();
+const REUSABLE_MATRIX4 = new Matrix4();
+const REUSABLE_RAY = new Ray();
 
 @Injectable({ providedIn: 'root' })
 export class CameraAnimationService {
 	currentPosition: LatLon & { height: number } = { lon: 0, lat: 0, height: 0 }; // [rad, rad, m]
 
 	private sceneManager!: SceneManagerService;
-	private googleTiles!: TilesRenderer; // TODO: Remove dependency to google tiles and only keep reference to ellipsoid.
+	private ellipsoid!: Ellipsoid;
 
 	private raycaster = new Raycaster();
 	private zoomToCoordsAnimationTl = gsap.timeline();
@@ -64,9 +66,9 @@ export class CameraAnimationService {
 		});
 	}
 
-	init(sceneManager: SceneManagerService, googleTiles: TilesRenderer): void {
+	init(sceneManager: SceneManagerService, ellipsoid: Ellipsoid): void {
 		this.sceneManager = sceneManager;
-		this.googleTiles = googleTiles;
+		this.ellipsoid = ellipsoid;
 
 		sceneManager.setOnControlsStartCallback(() => {
 			if (this.zoomToCoordsAnimationTl.isActive()) {
@@ -90,13 +92,13 @@ export class CameraAnimationService {
 
 	async zoomTo(
 		destination: { coords: google.maps.LatLng; elevation: number },
-		googleDebugTilesPlugin: { colorMode: number } // Todo: Remove dependency to debug tiles plugin?
+		onComplete?: () => void
 	): Promise<void> {
 		const camera = this.sceneManager.camera;
 		const controls = this.sceneManager.controls;
 
 		// Update currentPosition in case some user controls interaction moved the position since last address selection
-		this.googleTiles.ellipsoid.getPositionToCartographic(
+		this.ellipsoid.getPositionToCartographic(
 			threejsPositionToTiles(REUSABLE_VECTOR3_1.copy(camera.position)),
 			this.currentPosition
 		);
@@ -104,7 +106,7 @@ export class CameraAnimationService {
 		const height = destination.elevation + HEIGHT_ABOVE_TARGET_COORDS_ELEVATION;
 
 		tilesPositionToThreejs(
-			this.googleTiles.ellipsoid.getCartographicToPosition(
+			this.ellipsoid.getCartographicToPosition(
 				destination.coords.lat() * MathUtils.DEG2RAD,
 				destination.coords.lng() * MathUtils.DEG2RAD,
 				height,
@@ -125,7 +127,7 @@ export class CameraAnimationService {
 		const originDestToleranceRadius = 250; // [m]
 		const originDestLinearDistance =
 			2 *
-			this.googleTiles.ellipsoid.calculateEffectiveRadius(destination.coords.lat()) *
+			this.ellipsoid.calculateEffectiveRadius(destination.coords.lat()) *
 			Math.tan(originDestAngularDistance / 2); // [m]
 		const heightDiffTolerance = 2000; // [m]
 		if (originDestLinearDistance < originDestToleranceRadius && descentHeight < heightDiffTolerance) {
@@ -163,21 +165,23 @@ export class CameraAnimationService {
 			rotationDistance < TOLERANCE_DISTANCE_COORDS_NO_WAIT_TO_DESCENT ? 0 : totalAnimationDuration / 2;
 
 		this.raycaster.setFromCamera(REUSABLE_VECTOR2.set(0, 0), camera);
-		const cameraGlobeIntersections: Intersection[] = [];
-		this.googleTiles.group.raycast(this.raycaster, cameraGlobeIntersections);
-		if (cameraGlobeIntersections.length > 0) {
-			// TODO: What if multiple intersections?
-			const globePointCenterScreen = cameraGlobeIntersections[0].point;
-			this.pivotPoint.copy(globePointCenterScreen);
-		} else {
+		REUSABLE_RAY.copy(this.raycaster.ray).applyMatrix4(
+			REUSABLE_MATRIX4.copy(this.sceneManager.earth.matrixWorld).invert()
+		);
+		const intersection = this.ellipsoid.intersectRay(REUSABLE_RAY, this.pivotPoint);
+		if (intersection === null) {
+			// No ray intersection with globe
 			controls.getPivotPoint(this.pivotPoint);
+		} else {
+			// Transform result from ellipsoid local space back to world space
+			this.pivotPoint.applyMatrix4(this.sceneManager.earth.matrixWorld);
 		}
 		const pivotRadius = REUSABLE_VECTOR3_1.subVectors(camera.position, this.pivotPoint).length();
 		this.resetOrbitCameraPosition
 			.copy(this.pivotPoint)
 			.addScaledVector(REUSABLE_VECTOR3_2.copy(this.pivotPoint).normalize(), pivotRadius);
 
-		getUpDirection(this.googleTiles.ellipsoid, this.pivotPoint, this.targetCameraUp);
+		getUpDirection(this.ellipsoid, this.pivotPoint, this.targetCameraUp);
 
 		const pivotResetTl = () => {
 			return gsap
@@ -204,7 +208,7 @@ export class CameraAnimationService {
 					// Reset camera up vector since it shall stay Object3D.DEFAULT_UP for GlobeControls
 					camera.up.copy(Object3D.DEFAULT_UP);
 					// Update currentPosition
-					this.googleTiles.ellipsoid.getPositionToCartographic(
+					this.ellipsoid.getPositionToCartographic(
 						threejsPositionToTiles(REUSABLE_VECTOR3_1.copy(camera.position)),
 						this.currentPosition
 					);
@@ -247,7 +251,7 @@ export class CameraAnimationService {
 					this.moveCameraTo(this.currentPosition);
 				})
 				.eventCallback('onComplete', () => {
-					googleDebugTilesPlugin.colorMode = 1;
+					onComplete?.();
 					this.sceneManager.isControlsRotationReset = true;
 				});
 		};
@@ -260,7 +264,7 @@ export class CameraAnimationService {
 
 	private moveCameraTo(coords: { lon: number; lat: number; height: number }): void {
 		tilesPositionToThreejs(
-			this.googleTiles.ellipsoid.getCartographicToPosition(
+			this.ellipsoid.getCartographicToPosition(
 				coords.lat,
 				coords.lon,
 				coords.height,

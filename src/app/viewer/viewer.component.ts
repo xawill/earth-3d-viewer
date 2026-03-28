@@ -39,7 +39,7 @@ export class ViewerComponent {
 
 		await this.tilesManager.init(this.sceneManager, this.buildingTexture);
 
-		this.cameraAnimation.init(this.sceneManager, this.tilesManager.googleTiles);
+		this.cameraAnimation.init(this.sceneManager, this.tilesManager.getEllipsoid());
 
 		this.sceneManager.earth.updateWorldMatrix(true, true);
 
@@ -64,7 +64,7 @@ export class ViewerComponent {
 	}
 
 	zoomTo(destination: { coords: google.maps.LatLng; elevation: number }): void {
-		this.cameraAnimation.zoomTo(destination, this.tilesManager.googleDebugTilesPlugin);
+		this.cameraAnimation.zoomTo(destination, () => this.tilesManager.resetGoogleDebugColorMode());
 	}
 
 	updateLayers($event: LayersSettings): void {

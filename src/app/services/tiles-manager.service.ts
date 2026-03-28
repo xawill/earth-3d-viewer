@@ -1,5 +1,5 @@
 import { Injectable, signal } from '@angular/core';
-import { Tile, TilesRenderer } from '3d-tiles-renderer';
+import { Ellipsoid, Tile, TilesRenderer } from '3d-tiles-renderer';
 import {
 	GoogleCloudAuthPlugin,
 	BatchedTilesPlugin,
@@ -47,16 +47,16 @@ import {
 
 @Injectable({ providedIn: 'root' })
 export class TilesManagerService {
-	// TODO: Have all these fields private.
-	googleTiles = new TilesRenderer();
-	swisstopoBuildingsTiles = new TilesRenderer(SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL);
-	swisstopoTlmTiles = new TilesRenderer(SWISSTOPO_TLM_3D_TILES_TILESET_URL);
-	swisstopoVegetationTiles = new TilesRenderer(SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL);
-	swisstopoNamesTiles = new TilesRenderer(SWISSTOPO_NAMES_3D_TILES_TILESET_URL);
-	swisstopoTerrainTiles = new TilesRenderer(SWISSTOPO_TERRAIN_3D_TILES_TILESET_URL);
-
-	googleDebugTilesPlugin!: DebugTilesPlugin;
 	swisstopoWMTSCapabilities = signal<WMTSCapabilitiesResult | null>(null);
+
+	private googleTiles = new TilesRenderer();
+	private swisstopoBuildingsTiles = new TilesRenderer(SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL);
+	private swisstopoTlmTiles = new TilesRenderer(SWISSTOPO_TLM_3D_TILES_TILESET_URL);
+	private swisstopoVegetationTiles = new TilesRenderer(SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL);
+	private swisstopoNamesTiles = new TilesRenderer(SWISSTOPO_NAMES_3D_TILES_TILESET_URL);
+	private swisstopoTerrainTiles = new TilesRenderer(SWISSTOPO_TERRAIN_3D_TILES_TILESET_URL);
+
+	private googleDebugTilesPlugin!: DebugTilesPlugin;
 
 	private dracoLoader: DRACOLoader;
 	private sceneManager!: SceneManagerService;
@@ -238,6 +238,16 @@ export class TilesManagerService {
 		}
 
 		this.sceneManager.renderingNeedsUpdate = true;
+	}
+
+	getEllipsoid(): Ellipsoid {
+		return this.googleTiles.ellipsoid;
+	}
+
+	resetGoogleDebugColorMode(): void {
+		if (this.googleDebugTilesPlugin) {
+			this.googleDebugTilesPlugin.colorMode = 1;
+		}
 	}
 
 	private initGoogleTileset(target: TilesRenderer): void {
