@@ -10,16 +10,41 @@ export const LARGE_PRIME_3 = 8349;
 
 export const SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL =
 	'https://3d.geo.admin.ch/ch.swisstopo.swissbuildings3d.3d/v1/tileset.json';
-export const SWISSTOPO_TLM_3D_TILES_TILESET_URL =
-	'https://3d.geo.admin.ch/ch.swisstopo.swisstlm3d.3d/v1/tileset.json';
+export const SWISSTOPO_TLM_3D_TILES_TILESET_URL = 'https://3d.geo.admin.ch/ch.swisstopo.swisstlm3d.3d/v1/tileset.json';
 export const SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL =
 	'https://3d.geo.admin.ch/ch.swisstopo.vegetation.3d/v1/tileset.json';
 export const SWISSTOPO_NAMES_3D_TILES_TILESET_URL =
 	'https://3d.geo.admin.ch/3d-tiles/ch.swisstopo.swissnames3d.3d/20180716/tileset.json';
-export const SWISSTOPO_TERRAIN_3D_TILES_TILESET_URL =
-	'https://3d.geo.admin.ch/ch.swisstopo.terrain.3d/v1/layer.json';
-export const SWISSTOPO_WMTS_CAPABILITIES_URL =
-	'https://wmts.geo.admin.ch/EPSG/3857/1.0.0/WMTSCapabilities.xml?lang=en'; //To test/debug tiles indexing: https://codepen.io/xawill/pen/Wbrveqb
+export const SWISSTOPO_TERRAIN_3D_TILES_TILESET_URL = 'https://3d.geo.admin.ch/ch.swisstopo.terrain.3d/v1/layer.json';
+export const SWISSTOPO_WMTS_CAPABILITIES_URL = 'https://wmts.geo.admin.ch/EPSG/3857/1.0.0/WMTSCapabilities.xml?lang=en'; //To test/debug tiles indexing: https://codepen.io/xawill/pen/Wbrveqb
+
+export const SWISSTOPO_BASE_LAYERS = [
+	'ch.swisstopo.swissimage-product',
+	'ch.swisstopo.pixelkarte-farbe-pk25.noscale',
+	'ch.bazl.luftfahrtkarten-icao',
+];
+export const DEFAULT_SWISSTOPO_BASE_LAYER = 'ch.swisstopo.swissimage-product';
+export const SWISSTOPO_ADDITIONAL_LAYERS = [
+	'ch.bfs.volkszaehlung-bevoelkerungsstatistik_einwohner',
+	'ch.bafu.tranquillity-karte',
+	//'ch.bafu.gefaehrdungskarte-oberflaechenabfluss',
+	//'ch.bafu.laerm-strassenlaerm_nacht',
+	//'ch.pronatura.naturschutzgebiete',
+	//'ch.are.erreichbarkeit-oev',
+	//'ch.swisstopo.swisstlm3d-wanderwege',
+	//'ch.bazl.einschraenkungen-drohnen',
+	//'ch.are.reisezeit-agglomerationen-oev',
+	//'ch.bafu.schutzgebiete-luftfahrt',
+	//'ch.bfe.ladebedarfswelt-fahrzeuge',
+	//'ch.bfe.fernwaerme-nachfrage_wohn_dienstleistungsgebaeude',
+	//'ch.bfe.solarenergie-eignung-daecher',
+	//'ch.bakom.anschlussart-glasfaser',
+	//'ch.bakom.standorte-mobilfunkanlagen',
+	//'ch.vbs.panzerverschiebungsrouten',
+	//'ch.blw.bewaesserungsbeduerftigkeit',
+	//'ch.bfs.betriebszaehlungen-beschaeftigte_vollzeitaequivalente',
+];
+export const DEFAULT_ADDITIONAL_LAYER_OPACITY = 0.66;
 
 // TODO: Au clic, date d'image: https://api3.geo.admin.ch/rest/services/all/MapServer/identify?geometry=678250,213000&geometryFormat=geojson&geometryType=esriGeometryPoint&imageDisplay=1391,1070,96&lang=fr&layers=all:ch.swisstopo.images-swissimage-dop10.metadata&mapExtent=100,100,100,100&returnGeometry=true&tolerance=5
 

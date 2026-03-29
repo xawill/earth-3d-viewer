@@ -28,6 +28,7 @@ import { isMesh } from '../utils/three-type-guards';
 import { SwitzerlandRegion } from '../utils/SwitzerlandRegion';
 import { OutsideSwitzerlandRegion } from '../utils/OutsideSwitzerlandRegion';
 import {
+	DEFAULT_ADDITIONAL_LAYER_OPACITY,
 	ENABLE_DEBUG_PLUGIN,
 	GIGABYTE_BYTES,
 	GOOGLE_MAPS_2D_TILES_NAMES_STYLES,
@@ -66,7 +67,8 @@ export class TilesManagerService {
 	private pendingLayersSettingsUpdate: LayersSettings | null = null;
 
 	private namesOverlay!: GoogleMapsOverlay;
-	private swisstopoOverlay!: WMTSTilesOverlay;
+	private swisstopoBaseOverlay: { overlay: WMTSTilesOverlay; key: string } | null = null;
+	private swisstopoAdditionalOverlay: { overlay: WMTSTilesOverlay; key: string } | null = null;
 	private googleTilesOverlayPlugin!: ImageOverlayPlugin;
 	private swisstopoTerrainOverlayPlugin!: ImageOverlayPlugin;
 	private swisstopo3DObjectOverlayPlugin!: ImageOverlayPlugin;
@@ -203,38 +205,81 @@ export class TilesManagerService {
 			// TODO: Dispose tiles
 		}
 
-		if ($event.swisstopoOverlay?.layer && $event.swisstopoOverlay?.timeDimension) {
+		if ($event.swisstopoBaseOverlay?.layer && $event.swisstopoBaseOverlay?.timeDimension) {
 			const timeDimension =
-				$event.swisstopoOverlay.timeDimension === referenceDate.getFullYear().toString()
+				$event.swisstopoBaseOverlay.timeDimension === referenceDate.getFullYear().toString()
 					? 'current'
-					: $event.swisstopoOverlay.timeDimension; // Use "current" overlay if current year is selected. // TODO: Check if year dimension indeed exists in capabilities and if not, default to "current".
+					: $event.swisstopoBaseOverlay.timeDimension; // Use "current" overlay if current year is selected. // TODO: Check if year dimension indeed exists in capabilities and if not, default to "current".
 			const layer =
-				timeDimension === 'current' && $event.swisstopoOverlay.layer === 'ch.swisstopo.swissimage-product'
+				timeDimension === 'current' && $event.swisstopoBaseOverlay.layer === 'ch.swisstopo.swissimage-product'
 					? 'ch.swisstopo.swissimage'
-					: $event.swisstopoOverlay.layer;
+					: $event.swisstopoBaseOverlay.layer;
+			const newBaseOverlayKey = `${layer}:${timeDimension}`;
 
-			const newOverlay = new WMTSTilesOverlay({
-				capabilities: this.swisstopoWMTSCapabilities(),
-				layer,
-				style: 'default',
-				dimensions: { Time: timeDimension },
-				color: 0xffffff,
-				opacity: 1,
-			});
-			this.swisstopoTerrainOverlayPlugin?.addOverlay(newOverlay);
+			if (!this.swisstopoBaseOverlay || this.swisstopoBaseOverlay.key !== newBaseOverlayKey) {
+				const newBaseOverlay = new WMTSTilesOverlay({
+					capabilities: this.swisstopoWMTSCapabilities(),
+					layer,
+					style: 'default',
+					dimensions: { Time: timeDimension },
+					color: 0xffffff,
+					opacity: 1,
+				});
+				this.swisstopoTerrainOverlayPlugin?.addOverlay(newBaseOverlay, 0);
 
-			// If exisiting overlay, wait for new overlay to be loaded before deleting the old one.
-			if (this.swisstopoOverlay) {
-				const cleanupOldOverlay = () => {
-					this.swisstopoTerrainTiles.removeEventListener('needs-update', cleanupOldOverlay);
-					this.swisstopoTerrainOverlayPlugin?.deleteOverlay(this.swisstopoOverlay);
-					this.swisstopoOverlay = newOverlay;
-				};
-				this.swisstopoTerrainTiles.addEventListener('needs-update', cleanupOldOverlay);
-			} else {
-				this.swisstopoOverlay = newOverlay;
-				this.swisstopo3DObjectOverlayPlugin?.addOverlay(newOverlay);
+				// If existing overlay, wait for new overlay to be loaded before deleting the old one.
+				if (this.swisstopoBaseOverlay) {
+					const oldBaseOverlay = this.swisstopoBaseOverlay.overlay;
+					const cleanupOldOverlay = () => {
+						this.swisstopoTerrainTiles.removeEventListener('needs-update', cleanupOldOverlay);
+						this.swisstopoTerrainOverlayPlugin?.deleteOverlay(oldBaseOverlay);
+					};
+					this.swisstopoTerrainTiles.addEventListener('needs-update', cleanupOldOverlay);
+				} else {
+					this.swisstopo3DObjectOverlayPlugin?.addOverlay(newBaseOverlay);
+				}
+				this.swisstopoBaseOverlay = { overlay: newBaseOverlay, key: newBaseOverlayKey };
 			}
+		}
+
+		if ($event.swisstopoAdditionalOverlay?.layer) {
+			const timeDimension =
+				$event.swisstopoAdditionalOverlay?.timeDimension === referenceDate.getFullYear().toString()
+					? 'current'
+					: $event.swisstopoAdditionalOverlay?.timeDimension;
+			const additionalOverlayOpacity =
+				$event.swisstopoAdditionalOverlay.opacity ?? DEFAULT_ADDITIONAL_LAYER_OPACITY;
+			const newAdditionalOverlayKey = `${$event.swisstopoAdditionalOverlay?.layer}:${timeDimension}`;
+
+			if (this.swisstopoAdditionalOverlay && this.swisstopoAdditionalOverlay.key === newAdditionalOverlayKey) {
+				// Avoid deleting/recreating overlay when only opacity changes.
+				this.swisstopoAdditionalOverlay.overlay.opacity = additionalOverlayOpacity;
+			} else {
+				const newAdditionalOverlay = new WMTSTilesOverlay({
+					capabilities: this.swisstopoWMTSCapabilities(),
+					layer: $event.swisstopoAdditionalOverlay?.layer,
+					style: 'default',
+					dimensions: { Time: timeDimension },
+					color: 0xffffff,
+					opacity: additionalOverlayOpacity,
+				});
+
+				this.swisstopoTerrainOverlayPlugin?.addOverlay(newAdditionalOverlay, 10);
+
+				if (this.swisstopoAdditionalOverlay) {
+					const oldAdditionalOverlay = this.swisstopoAdditionalOverlay.overlay;
+					const cleanupOld = () => {
+						this.swisstopoTerrainTiles.removeEventListener('needs-update', cleanupOld);
+						this.swisstopoTerrainOverlayPlugin?.deleteOverlay(oldAdditionalOverlay);
+					};
+					this.swisstopoTerrainTiles.addEventListener('needs-update', cleanupOld);
+				}
+
+				this.swisstopoAdditionalOverlay = { overlay: newAdditionalOverlay, key: newAdditionalOverlayKey };
+			}
+		} else if (this.swisstopoAdditionalOverlay) {
+			this.swisstopoTerrainOverlayPlugin?.deleteOverlay(this.swisstopoAdditionalOverlay.overlay);
+			this.swisstopoAdditionalOverlay = null;
 		}
 
 		this.sceneManager.renderingNeedsUpdate = true;

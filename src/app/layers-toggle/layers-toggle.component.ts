@@ -1,31 +1,12 @@
 import { Component, input, output, signal, computed, effect } from '@angular/core';
 import { initFlowbite } from 'flowbite';
 import { WMTSCapabilitiesResult } from '3d-tiles-renderer/plugins';
-
-const SWISSTOPO_OVERLAY_AVAILABLE_LAYERS = [
-	'ch.swisstopo.swissimage-product',
-	'ch.swisstopo.pixelkarte-farbe-pk25.noscale',
-	'ch.bazl.luftfahrtkarten-icao',
-	'ch.bfs.volkszaehlung-bevoelkerungsstatistik_einwohner',
-	'ch.bafu.tranquillity-karte',
-	//'ch.bafu.gefaehrdungskarte-oberflaechenabfluss',
-	//'ch.bafu.laerm-strassenlaerm_nacht',
-	//'ch.pronatura.naturschutzgebiete',
-	//'ch.are.erreichbarkeit-oev',
-	//'ch.swisstopo.swisstlm3d-wanderwege',
-	//'ch.bazl.einschraenkungen-drohnen',
-	//'ch.are.reisezeit-agglomerationen-oev',
-	//'ch.bafu.schutzgebiete-luftfahrt',
-	//'ch.bfe.ladebedarfswelt-fahrzeuge',
-	//'ch.bfe.fernwaerme-nachfrage_wohn_dienstleistungsgebaeude',
-	//'ch.bfe.solarenergie-eignung-daecher',
-	//'ch.bakom.anschlussart-glasfaser',
-	//'ch.bakom.standorte-mobilfunkanlagen',
-	//'ch.vbs.panzerverschiebungsrouten',
-	//'ch.blw.bewaesserungsbeduerftigkeit',
-	//'ch.bfs.betriebszaehlungen-beschaeftigte_vollzeitaequivalente',
-];
-const DEFAULT_SWISSTOPO_OVERLAY_LAYER = 'ch.swisstopo.swissimage-product';
+import {
+	DEFAULT_SWISSTOPO_BASE_LAYER,
+	SWISSTOPO_BASE_LAYERS,
+	SWISSTOPO_ADDITIONAL_LAYERS,
+	DEFAULT_ADDITIONAL_LAYER_OPACITY,
+} from '../config/tiles.config';
 
 @Component({
 	selector: 'layers-settings',
@@ -43,24 +24,35 @@ export class LayersSettingsComponent {
 	swisstopoBuildingsTilesEnabled = signal(true);
 	swisstopoVegetationTilesEnabled = signal(false);
 	adminOverlayEnabled = signal(false);
-	selectedOverlayLayer = signal(DEFAULT_SWISSTOPO_OVERLAY_LAYER);
-	selectedTimeDimension = signal('current');
+	selectedBaseLayer = signal(DEFAULT_SWISSTOPO_BASE_LAYER);
+	selectedBaseTimeDimension = signal('current');
+	selectedAdditionalLayer = signal<string | null>(null);
+	selectedAdditionalLayerTimeDimension = signal('current');
+	selectedAdditionalLayerOpacity = signal(DEFAULT_ADDITIONAL_LAYER_OPACITY);
 
-	availableWMTSOverlayLayers = computed(() => {
+	availableBaseLayers = computed(() => {
 		const caps = this.swisstopoWMTSCapabilities();
 		if (!caps?.layers) {
 			return [];
 		}
-		return caps.layers.filter(layer => SWISSTOPO_OVERLAY_AVAILABLE_LAYERS.includes(layer.identifier));
+		return caps.layers.filter(layer => SWISSTOPO_BASE_LAYERS.includes(layer.identifier));
 	});
 
-	availableTimeDimensionsForSelectedWMTSOverlayLayer = computed(() => {
-		const selectedLayer = this.selectedOverlayLayer();
+	availableAdditionalLayers = computed(() => {
+		const caps = this.swisstopoWMTSCapabilities();
+		if (!caps?.layers) {
+			return [];
+		}
+		return caps.layers.filter(layer => SWISSTOPO_ADDITIONAL_LAYERS.includes(layer.identifier));
+	});
+
+	availableTimeDimensionsForBaseLayer = computed(() => {
+		const selectedLayer = this.selectedBaseLayer();
 		if (!selectedLayer || !this.swisstopoWMTSCapabilities()?.layers) {
 			return [];
 		}
 
-		const layer = this.availableWMTSOverlayLayers()?.find(l => l.identifier === selectedLayer);
+		const layer = this.availableBaseLayers()?.find(l => l.identifier === selectedLayer);
 		if (!layer?.dimensions || layer.dimensions.length === 0) {
 			return [];
 		}
@@ -73,17 +65,25 @@ export class LayersSettingsComponent {
 		return timeDimension.values;
 	});
 
+	availableTimeDimensionsForAdditionalLayer = computed(() => {
+		const selectedLayer = this.selectedAdditionalLayer();
+		if (!selectedLayer) {
+			return [];
+		}
+		return this.getTimeDimensionsForLayer(selectedLayer);
+	});
+
 	constructor() {
 		// Update selected time dimension when layer or available time dimensions change
 		effect(() => {
 			this.swisstopoWMTSCapabilities();
-			this.selectedOverlayLayer();
+			this.selectedBaseLayer();
 
-			const currentTimeDimension = this.selectedTimeDimension();
-			const defaultTimeDimension = this.getDefaultTimeDimensionForLayer();
-			const availableTimeDimensions = this.availableTimeDimensionsForSelectedWMTSOverlayLayer();
+			const currentTimeDimension = this.selectedBaseTimeDimension();
+			const defaultTimeDimension = this.getDefaultTimeDimensionForLayer(this.selectedBaseLayer());
+			const availableTimeDimensions = this.availableTimeDimensionsForBaseLayer();
 			if (currentTimeDimension && !availableTimeDimensions.includes(currentTimeDimension)) {
-				this.selectedTimeDimension.set(defaultTimeDimension);
+				this.selectedBaseTimeDimension.set(defaultTimeDimension);
 			}
 		});
 
@@ -95,9 +95,13 @@ export class LayersSettingsComponent {
 			this.swisstopoBuildingsTilesEnabled();
 			this.swisstopoVegetationTilesEnabled();
 			this.adminOverlayEnabled();
-			this.selectedOverlayLayer();
-			this.selectedTimeDimension();
+			this.selectedBaseLayer();
+			this.selectedBaseTimeDimension();
+			this.selectedAdditionalLayer();
+			this.selectedAdditionalLayerTimeDimension();
+			this.selectedAdditionalLayerOpacity();
 
+			const additionalOverlay = this.selectedAdditionalLayer();
 			this.layersSettings.emit({
 				googleTiles: {
 					enabled: this.googleTilesEnabled(),
@@ -112,10 +116,17 @@ export class LayersSettingsComponent {
 				adminOverlay: {
 					enabled: this.adminOverlayEnabled(),
 				},
-				swisstopoOverlay: {
-					layer: this.selectedOverlayLayer(),
-					timeDimension: this.selectedTimeDimension(),
+				swisstopoBaseOverlay: {
+					layer: this.selectedBaseLayer(),
+					timeDimension: this.selectedBaseTimeDimension(),
 				},
+				swisstopoAdditionalOverlay: additionalOverlay
+					? {
+							layer: additionalOverlay,
+							timeDimension: this.selectedAdditionalLayerTimeDimension(),
+							opacity: this.selectedAdditionalLayerOpacity(),
+						}
+					: undefined,
 			});
 		});
 	}
@@ -124,8 +135,21 @@ export class LayersSettingsComponent {
 		initFlowbite();
 	}
 
-	private getDefaultTimeDimensionForLayer(): string {
-		const availableTimeDimensions = this.availableTimeDimensionsForSelectedWMTSOverlayLayer();
+	private getTimeDimensionsForLayer(layerIdentifier: string): string[] {
+		const caps = this.swisstopoWMTSCapabilities();
+		if (!caps?.layers) {
+			return [];
+		}
+		const layer = caps.layers.find(l => l.identifier === layerIdentifier);
+		if (!layer?.dimensions || layer.dimensions.length === 0) {
+			return [];
+		}
+		const timeDimension = layer.dimensions.find(dim => dim.identifier === 'Time');
+		return timeDimension?.values ?? [];
+	}
+
+	private getDefaultTimeDimensionForLayer(layerIdentifier: string): string {
+		const availableTimeDimensions = this.getTimeDimensionsForLayer(layerIdentifier);
 		if (availableTimeDimensions.length === 0) {
 			return 'current';
 		}
@@ -160,14 +184,31 @@ export class LayersSettingsComponent {
 		const checked = (event.target as HTMLInputElement).checked;
 		this.adminOverlayEnabled.set(checked);
 	}
-	onOverlayLayerChange(event: Event): void {
+	onBaseLayerChange(event: Event): void {
 		const value = (event.target as HTMLSelectElement).value;
-		this.selectedOverlayLayer.set(value);
-		this.selectedTimeDimension.set(this.getDefaultTimeDimensionForLayer());
+		this.selectedBaseLayer.set(value);
+		this.selectedBaseTimeDimension.set(this.getDefaultTimeDimensionForLayer(value));
 	}
-	onTimeDimensionChange(event: Event): void {
+	onBaseTimeDimensionChange(event: Event): void {
 		const value = (event.target as HTMLSelectElement).value;
-		this.selectedTimeDimension.set(value);
+		this.selectedBaseTimeDimension.set(value);
+	}
+	onAdditionalOverlayChange(event: Event): void {
+		const value = (event.target as HTMLSelectElement).value;
+		if (value) {
+			this.selectedAdditionalLayer.set(value);
+			this.selectedAdditionalLayerTimeDimension.set(this.getDefaultTimeDimensionForLayer(value));
+		} else {
+			this.selectedAdditionalLayer.set(null);
+		}
+	}
+	onAdditionalOverlayTimeDimensionChange(event: Event): void {
+		const value = (event.target as HTMLSelectElement).value;
+		this.selectedAdditionalLayerTimeDimension.set(value);
+	}
+	onAdditionalOverlayOpacityChange(event: Event): void {
+		const value = (event.target as HTMLInputElement).value;
+		this.selectedAdditionalLayerOpacity.set(+value);
 	}
 }
 
@@ -185,8 +226,13 @@ export interface LayersSettings {
 	adminOverlay?: {
 		enabled?: boolean;
 	};
-	swisstopoOverlay?: {
-		layer?: string;
-		timeDimension?: string;
+	swisstopoBaseOverlay?: {
+		layer: string;
+		timeDimension: string;
+	};
+	swisstopoAdditionalOverlay?: {
+		layer: string;
+		timeDimension: string;
+		opacity: number;
 	};
 }
