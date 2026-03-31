@@ -37,13 +37,13 @@ export class ViewerComponent {
 
 		this.buildingTexture.init();
 
-		await this.tilesManager.init(this.sceneManager, this.buildingTexture);
-
-		this.cameraAnimation.init(this.sceneManager, this.tilesManager.getEllipsoid());
-
 		this.sceneManager.earth.updateWorldMatrix(true, true);
 
 		await this.atmosphere.init(this.sceneManager);
+
+		await this.tilesManager.init(this.sceneManager, this.buildingTexture);
+
+		this.cameraAnimation.init(this.sceneManager, this.tilesManager.getEllipsoid());
 
 		this.sceneManager.startRenderLoop(() => {
 			this.tilesManager.updateAllTiles();

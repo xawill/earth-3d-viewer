@@ -1,4 +1,4 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { Ellipsoid, Tile, TilesRenderer } from '3d-tiles-renderer';
 import {
 	GoogleCloudAuthPlugin,
@@ -15,11 +15,13 @@ import {
 	GoogleMapsOverlay,
 	WMTSCapabilitiesLoader,
 	WMTSCapabilitiesResult,
+	XYZTilesPlugin,
 } from '3d-tiles-renderer/plugins';
 import { Mesh, MeshStandardMaterial, Object3D } from 'three';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { environment } from '../../environments/environment';
 import { SceneManagerService } from './scene-manager.service';
+import { AtmosphereService } from './atmosphere.service';
 import { ModelTextureService } from './model-texture.service';
 import { LayersSettings } from '../layers-toggle/layers-toggle.component';
 import { removeLightingFromMaterial, updateObjectAndChildrenOpacity } from '../utils/graphics-utils';
@@ -43,6 +45,7 @@ import {
 	SWISSTOPO_WMTS_CAPABILITIES_URL,
 	SWISS_GEOID_ELLIPSOID_OFFSET,
 	SWITZERLAND_REGION_CAMERA_ELEVATION_THRESHOLD,
+	VIIRS_BLACK_MARBLE_TILES_URL,
 	ZOOM_LEVEL_COLORS_DEBUG,
 } from '../config/tiles.config';
 
@@ -56,6 +59,7 @@ export class TilesManagerService {
 	private swisstopoVegetationTiles = new TilesRenderer(SWISSTOPO_VEGETATION_3D_TILES_TILESET_URL);
 	private swisstopoNamesTiles = new TilesRenderer(SWISSTOPO_NAMES_3D_TILES_TILESET_URL);
 	private swisstopoTerrainTiles = new TilesRenderer(SWISSTOPO_TERRAIN_3D_TILES_TILESET_URL);
+	private blackMarbleTiles = new TilesRenderer();
 
 	private googleDebugTilesPlugin!: DebugTilesPlugin;
 
@@ -73,6 +77,8 @@ export class TilesManagerService {
 	private swisstopoTerrainOverlayPlugin!: ImageOverlayPlugin;
 	private swisstopo3DObjectOverlayPlugin!: ImageOverlayPlugin;
 
+	private atmosphereService = inject(AtmosphereService);
+
 	constructor() {
 		this.dracoLoader = new DRACOLoader();
 		this.dracoLoader.setDecoderPath('libs/draco/gltf/');
@@ -81,7 +87,6 @@ export class TilesManagerService {
 
 	async init(sceneManager: SceneManagerService, buildingTexture: ModelTextureService): Promise<void> {
 		this.sceneManager = sceneManager;
-		const renderer = sceneManager.renderer;
 
 		this.initGoogleTileset(this.googleTiles);
 
@@ -104,12 +109,12 @@ export class TilesManagerService {
 			await new WMTSCapabilitiesLoader().loadAsync(SWISSTOPO_WMTS_CAPABILITIES_URL)
 		);
 		this.swisstopoTerrainOverlayPlugin = new ImageOverlayPlugin({
-			renderer,
+			renderer: this.sceneManager.renderer,
 			enableTileSplitting: true,
 			overlays: [], // NB: swisstopoOverlay is added when selected layers init
 		});
 		this.swisstopo3DObjectOverlayPlugin = new ImageOverlayPlugin({
-			renderer,
+			renderer: this.sceneManager.renderer,
 			enableTileSplitting: false,
 			overlays: [], // NB: swisstopoOverlay is added when selected layers init
 		});
@@ -117,7 +122,7 @@ export class TilesManagerService {
 		this.initSwisstopo3DTileset(
 			this.swisstopoBuildingsTiles,
 			40,
-			buildingTexture.createBuildingMeshCustomizationCallback(renderer),
+			buildingTexture.createBuildingMeshCustomizationCallback(this.sceneManager.renderer),
 			true
 		);
 		this.initSwisstopo3DTileset(this.swisstopoTlmTiles, 100, buildingTexture.createTlmMeshCustomizationCallback());
@@ -128,6 +133,7 @@ export class TilesManagerService {
 		);
 		//this.initSwisstopo3DTileset(this.swisstopoNamesTiles); // TODO: .vctr format not supported (yet). // TODO: Find most recent tileset (if it even exists?)
 		this.initSwisstopoQuantizedTileset(this.swisstopoTerrainTiles);
+		this.initBlackMarbleTileset(this.blackMarbleTiles);
 
 		sceneManager.controls.setEllipsoid(this.googleTiles.ellipsoid, this.googleTiles.group);
 
@@ -140,25 +146,36 @@ export class TilesManagerService {
 	}
 
 	updateAllTiles(): void {
-		const camera = this.sceneManager.camera;
-
-		if (this.googleTiles.hasCamera(camera) && this.googleTiles.group.visible) {
+		if (this.googleTiles.hasCamera(this.sceneManager.camera) && this.googleTiles.group.visible) {
 			this.googleTiles.update();
 		}
-		if (this.swisstopoBuildingsTiles.hasCamera(camera) && this.swisstopoBuildingsTiles.group.visible) {
+		if (
+			this.swisstopoBuildingsTiles.hasCamera(this.sceneManager.camera) &&
+			this.swisstopoBuildingsTiles.group.visible
+		) {
 			this.swisstopoBuildingsTiles.update();
 		}
-		if (this.swisstopoTlmTiles.hasCamera(camera) && this.swisstopoTlmTiles.group.visible) {
+		if (this.swisstopoTlmTiles.hasCamera(this.sceneManager.camera) && this.swisstopoTlmTiles.group.visible) {
 			this.swisstopoTlmTiles.update();
 		}
-		if (this.swisstopoVegetationTiles.hasCamera(camera) && this.swisstopoVegetationTiles.group.visible) {
+		if (
+			this.swisstopoVegetationTiles.hasCamera(this.sceneManager.camera) &&
+			this.swisstopoVegetationTiles.group.visible
+		) {
 			this.swisstopoVegetationTiles.update();
 		}
-		if (this.swisstopoNamesTiles.hasCamera(camera) && this.swisstopoNamesTiles.group.visible) {
+		if (this.swisstopoNamesTiles.hasCamera(this.sceneManager.camera) && this.swisstopoNamesTiles.group.visible) {
 			this.swisstopoNamesTiles.update();
 		}
-		if (this.swisstopoTerrainTiles.hasCamera(camera) && this.swisstopoTerrainTiles.group.visible) {
+		if (
+			this.swisstopoTerrainTiles.hasCamera(this.sceneManager.camera) &&
+			this.swisstopoTerrainTiles.group.visible
+		) {
 			this.swisstopoTerrainTiles.update();
+		}
+		if (this.blackMarbleTiles.hasCamera(this.sceneManager.camera)) {
+			// NB: Don't check group visibility as it's always invisible (rendered off-screen).
+			this.blackMarbleTiles.update();
 		}
 	}
 
@@ -296,10 +313,6 @@ export class TilesManagerService {
 	}
 
 	private initGoogleTileset(target: TilesRenderer): void {
-		const renderer = this.sceneManager.renderer;
-		const camera = this.sceneManager.camera;
-		const earth = this.sceneManager.earth;
-
 		target.errorTarget = 20;
 
 		target.optimizedLoadStrategy = true;
@@ -336,7 +349,7 @@ export class TilesManagerService {
 		);
 		target.registerPlugin(
 			new BatchedTilesPlugin({
-				renderer,
+				renderer: this.sceneManager.renderer,
 				instanceCount: 250,
 				vertexCount: 750,
 				indexCount: 2000,
@@ -353,7 +366,7 @@ export class TilesManagerService {
 		}
 
 		this.googleTilesOverlayPlugin = new ImageOverlayPlugin({
-			renderer,
+			renderer: this.sceneManager.renderer,
 			enableTileSplitting: true,
 			overlays: [], // Overlay is added dynamically based on user settings
 		});
@@ -364,10 +377,10 @@ export class TilesManagerService {
 		target.registerPlugin(regionsPlugin);
 		regionsPlugin.addRegion(new OutsideSwitzerlandRegion(SWITZERLAND_REGION_CAMERA_ELEVATION_THRESHOLD));
 
-		target.setCamera(camera);
-		target.setResolutionFromRenderer(camera, renderer);
+		target.setCamera(this.sceneManager.camera);
+		target.setResolutionFromRenderer(this.sceneManager.camera, this.sceneManager.renderer);
 
-		earth.add(target.group);
+		this.sceneManager.earth.add(target.group);
 
 		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
 			updateObjectAndChildrenOpacity(o.scene, this.googleTilesOpacity);
@@ -395,10 +408,6 @@ export class TilesManagerService {
 		meshCustomizationCallback?: (mesh: Mesh) => void,
 		overlaySwissimage = false
 	): void {
-		const renderer = this.sceneManager.renderer;
-		const camera = this.sceneManager.camera;
-		const earth = this.sceneManager.earth;
-
 		target.errorTarget = errorTarget;
 
 		target.optimizedLoadStrategy = true;
@@ -431,10 +440,10 @@ export class TilesManagerService {
 			target.registerPlugin(this.swisstopo3DObjectOverlayPlugin);
 		}
 
-		target.setCamera(camera);
-		target.setResolutionFromRenderer(camera, renderer);
+		target.setCamera(this.sceneManager.camera);
+		target.setResolutionFromRenderer(this.sceneManager.camera, this.sceneManager.renderer);
 
-		earth.add(target.group);
+		this.sceneManager.earth.add(target.group);
 
 		target.addEventListener('load-tileset', (_o: { tileSet?: Object }) => {
 			target.group.position.copy(SWISS_GEOID_ELLIPSOID_OFFSET);
@@ -472,10 +481,6 @@ export class TilesManagerService {
 	}
 
 	private initSwisstopoQuantizedTileset(target: TilesRenderer): void {
-		const renderer = this.sceneManager.renderer;
-		const camera = this.sceneManager.camera;
-		const earth = this.sceneManager.earth;
-
 		target.errorTarget = 2;
 
 		target.optimizedLoadStrategy = true;
@@ -520,10 +525,10 @@ export class TilesManagerService {
 		// TODO: This ImageOverlayPlugin new approach seams to be less performant than with TextureOverlayPlugin. Considering reverting...
 		target.registerPlugin(this.swisstopoTerrainOverlayPlugin);
 
-		target.setCamera(camera);
-		target.setResolutionFromRenderer(camera, renderer);
+		target.setCamera(this.sceneManager.camera);
+		target.setResolutionFromRenderer(this.sceneManager.camera, this.sceneManager.renderer);
 
-		earth.add(target.group);
+		this.sceneManager.earth.add(target.group);
 
 		target.addEventListener('load-tileset', () => {
 			target.group.position.copy(SWISS_GEOID_ELLIPSOID_OFFSET);
@@ -532,10 +537,42 @@ export class TilesManagerService {
 			o.scene.traverse(child => {
 				if (isMesh(child)) {
 					// We need to Use unlit material (e.g. MeshBasicMaterial) for proper albedo; required for atmosphere. However, ImageOverlayPlugin uses a StandardMeshMaterial with onBeforeCompile we cannot really migrate to a MeshBasicMaterial. So we keep the original material and just make it not affected by light.
-					removeLightingFromMaterial(child.material as MeshStandardMaterial, renderer);
+					removeLightingFromMaterial(child.material as MeshStandardMaterial, this.sceneManager.renderer);
 				}
 			});
 		});
+		target.addEventListener('needs-render', () => {
+			this.sceneManager.renderingNeedsUpdate = true;
+		});
+		target.addEventListener('needs-update', () => {
+			this.sceneManager.renderingNeedsUpdate = true;
+		});
+		target.addEventListener('fade-change', () => {
+			this.sceneManager.renderingNeedsUpdate = true;
+		});
+	}
+
+	private initBlackMarbleTileset(target: TilesRenderer): void {
+		target.errorTarget = 1;
+
+		target.registerPlugin(
+			new XYZTilesPlugin({
+				url: VIIRS_BLACK_MARBLE_TILES_URL,
+				shape: 'ellipsoid',
+				levels: 8,
+			})
+		);
+		target.registerPlugin(new UnloadTilesPlugin());
+		target.registerPlugin(new TilesFadePlugin());
+
+		target.setCamera(this.sceneManager.camera);
+		target.setResolutionFromRenderer(this.sceneManager.camera, this.sceneManager.renderer);
+
+		this.sceneManager.earth.add(target.group);
+		target.group.visible = false; // Main render skips it; the effect renders off-screen.
+
+		this.atmosphereService.blackMarbleEffect.blackMarbleTiles = target.group;
+
 		target.addEventListener('needs-render', () => {
 			this.sceneManager.renderingNeedsUpdate = true;
 		});

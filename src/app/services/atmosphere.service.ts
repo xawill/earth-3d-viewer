@@ -9,10 +9,12 @@ import {
 } from '@takram/three-atmosphere';
 import { DitheringEffect, LensFlareEffect } from '@takram/three-geospatial-effects';
 import { SceneManagerService } from './scene-manager.service';
+import { BlackMarbleEffect } from '../utils/black-marble-effect';
 
 @Injectable({ providedIn: 'root' })
 export class AtmosphereService {
 	aerialPerspective!: AerialPerspectiveEffect;
+	blackMarbleEffect!: BlackMarbleEffect;
 
 	async init(sceneManager: SceneManagerService): Promise<void> {
 		const renderer = sceneManager.renderer;
@@ -20,6 +22,8 @@ export class AtmosphereService {
 		const scene = sceneManager.scene;
 		const composer = sceneManager.composer;
 		const earth = sceneManager.earth;
+
+		this.blackMarbleEffect = new BlackMarbleEffect(scene, camera, earth);
 
 		// Generate precomputed textures.
 		const texturesGenerator = new PrecomputedTexturesGenerator(renderer);
@@ -55,7 +59,7 @@ export class AtmosphereService {
 		const normalPass = new NormalPass(scene, camera);
 		this.aerialPerspective.normalBuffer = normalPass.texture;
 		composer.addPass(normalPass);
-		composer.addPass(new EffectPass(camera, this.aerialPerspective));
+		composer.addPass(new EffectPass(camera, this.aerialPerspective, this.blackMarbleEffect));
 		composer.addPass(new EffectPass(camera, new LensFlareEffect()));
 		composer.addPass(new EffectPass(camera, new ToneMappingEffect({ mode: ToneMappingMode.AGX })));
 		composer.addPass(new EffectPass(camera, new SMAAEffect()));
@@ -68,6 +72,7 @@ export class AtmosphereService {
 		if (this.aerialPerspective) {
 			getSunDirectionECEF(referenceDate, this.aerialPerspective.sunDirection);
 			getMoonDirectionECEF(referenceDate, this.aerialPerspective.moonDirection);
+			this.blackMarbleEffect.sunDirection.copy(this.aerialPerspective.sunDirection);
 		}
 	}
 }

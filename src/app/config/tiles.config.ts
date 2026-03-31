@@ -8,6 +8,8 @@ export const LARGE_PRIME_1 = 7381;
 export const LARGE_PRIME_2 = 1931;
 export const LARGE_PRIME_3 = 8349;
 
+export const VIIRS_BLACK_MARBLE_TILES_URL =
+	'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png';
 export const SWISSTOPO_BUILDINGS_3D_TILES_TILESET_URL =
 	'https://3d.geo.admin.ch/ch.swisstopo.swissbuildings3d.3d/v1/tileset.json';
 export const SWISSTOPO_TLM_3D_TILES_TILESET_URL = 'https://3d.geo.admin.ch/ch.swisstopo.swisstlm3d.3d/v1/tileset.json';
