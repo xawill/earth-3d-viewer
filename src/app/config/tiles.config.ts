@@ -48,6 +48,25 @@ export const SWISSTOPO_ADDITIONAL_LAYERS = [
 ];
 export const DEFAULT_ADDITIONAL_LAYER_OPACITY = 0.66;
 
+export const METEOSWISS_SNOW_API_BASE_URL = 'https://app-prod-static.meteoswiss-app.ch/v1/'; // /!\ This is a private API endpoint found by reverse-engineering the MeteoSwiss iOS App.
+export const METEOSWISS_SNOW_OVERVIEW_URL = `${METEOSWISS_SNOW_API_BASE_URL}schnee_overview.json`;
+// Image extent in LV03 (CH1903) coordinates, derived from the 631×461 px image with Swiss data at pixels x:205-555, y:93-315 (≈1km/px resolution).
+export const SNOW_OVERLAY_LV03_XMIN = 279000; // Easting [m]
+export const SNOW_OVERLAY_LV03_XMAX = 910000;
+export const SNOW_OVERLAY_LV03_YMIN = -61000; // Northing [m]
+export const SNOW_OVERLAY_LV03_YMAX = 400000;
+export const SNOW_COLOR_MAP: [number, number, number, number][] = [
+	// Color map for the 8 snow depth levels (partially covered, 20, 50, 80, 120, 200, 300, 400+ cm). Each entry: [R, G, B, A]
+	[205, 255, 205, 255], // 5-20cm
+	[153, 240, 178, 255], // 20-50cm
+	[83, 189, 158, 255], // 50-80cm
+	[50, 150, 180, 255], // 80-120cm
+	[3, 112, 176, 255], // 120-200cm
+	[3, 80, 140, 255], // 200-300cm
+	[97, 3, 51, 255], // 300-400cm
+	[77, 0, 15, 255], // >400cm
+];
+
 // TODO: Au clic, date d'image: https://api3.geo.admin.ch/rest/services/all/MapServer/identify?geometry=678250,213000&geometryFormat=geojson&geometryType=esriGeometryPoint&imageDisplay=1391,1070,96&lang=fr&layers=all:ch.swisstopo.images-swissimage-dop10.metadata&mapExtent=100,100,100,100&returnGeometry=true&tolerance=5
 
 export const DEFAULT_START_COORDS: LatLng = { lat: 46.516591, lng: 6.629047 };

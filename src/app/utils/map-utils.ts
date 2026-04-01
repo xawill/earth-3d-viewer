@@ -59,3 +59,31 @@ export function haversineDistance(origin: LatLon, destination: LatLon): number {
 	const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 	return WGS84_RADIUS * c;
 }
+
+/**
+ * Convert Swiss LV03 (CH1903) coordinates to WGS84 lat/lon in degrees. Uses the approximate formulas from swisstopo (https://www.swisstopo.admin.ch/en/transformations-3d-position).
+ */
+export function lv03ToWgs84(easting: number, northing: number): { lat: number; lon: number } {
+	const yPrime = (easting - 600000) / 1000000;
+	const xPrime = (northing - 200000) / 1000000;
+
+	const latSec =
+		16.9023892 +
+		3.238272 * xPrime -
+		0.270978 * yPrime * yPrime -
+		0.002528 * xPrime * xPrime -
+		0.0447 * yPrime * yPrime * xPrime -
+		0.014 * xPrime * xPrime * xPrime;
+
+	const lonSec =
+		2.6779094 +
+		4.728982 * yPrime +
+		0.0791484 * yPrime * xPrime +
+		0.1306 * yPrime * xPrime * xPrime -
+		0.0436 * yPrime * yPrime * yPrime;
+
+	return {
+		lat: (latSec * 100) / 36,
+		lon: (lonSec * 100) / 36,
+	};
+}

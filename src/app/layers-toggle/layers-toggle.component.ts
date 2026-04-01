@@ -15,6 +15,8 @@ import {
 	styleUrl: './layers-toggle.component.css',
 })
 export class LayersSettingsComponent {
+	readonly SNOW_DEPTH_LAYER_ID = '__snow-depth__';
+
 	layersSettings = output<LayersSettings>();
 
 	swisstopoWMTSCapabilities = input<WMTSCapabilitiesResult | null>(null);
@@ -97,11 +99,11 @@ export class LayersSettingsComponent {
 			this.adminOverlayEnabled();
 			this.selectedBaseLayer();
 			this.selectedBaseTimeDimension();
-			this.selectedAdditionalLayer();
+			const additionalOverlay = this.selectedAdditionalLayer();
 			this.selectedAdditionalLayerTimeDimension();
 			this.selectedAdditionalLayerOpacity();
 
-			const additionalOverlay = this.selectedAdditionalLayer();
+			const isSnowOverlay = additionalOverlay === this.SNOW_DEPTH_LAYER_ID;
 			this.layersSettings.emit({
 				googleTiles: {
 					enabled: this.googleTilesEnabled(),
@@ -120,13 +122,18 @@ export class LayersSettingsComponent {
 					layer: this.selectedBaseLayer(),
 					timeDimension: this.selectedBaseTimeDimension(),
 				},
-				swisstopoAdditionalOverlay: additionalOverlay
-					? {
-							layer: additionalOverlay,
-							timeDimension: this.selectedAdditionalLayerTimeDimension(),
-							opacity: this.selectedAdditionalLayerOpacity(),
-						}
-					: undefined,
+				swisstopoAdditionalOverlay:
+					additionalOverlay && !isSnowOverlay
+						? {
+								layer: additionalOverlay,
+								timeDimension: this.selectedAdditionalLayerTimeDimension(),
+								opacity: this.selectedAdditionalLayerOpacity(),
+							}
+						: undefined,
+				snowDepthOverlay: {
+					enabled: isSnowOverlay,
+					opacity: isSnowOverlay ? this.selectedAdditionalLayerOpacity() : undefined,
+				},
 			});
 		});
 	}
@@ -234,5 +241,9 @@ export interface LayersSettings {
 		layer: string;
 		timeDimension: string;
 		opacity: number;
+	};
+	snowDepthOverlay?: {
+		enabled?: boolean;
+		opacity?: number;
 	};
 }

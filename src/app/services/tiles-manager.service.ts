@@ -30,6 +30,7 @@ import { disposeManuallyCreatedMaterials, TileCreasedNormalsPlugin } from '../ut
 import { isMesh } from '../utils/three-type-guards';
 import { SwitzerlandRegion } from '../utils/SwitzerlandRegion';
 import { OutsideSwitzerlandRegion } from '../utils/OutsideSwitzerlandRegion';
+import { SnowImageOverlay } from '../utils/snow-image-overlay';
 import GUI from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import {
 	DEFAULT_ADDITIONAL_LAYER_OPACITY,
@@ -74,7 +75,8 @@ export class TilesManagerService {
 
 	private namesOverlay!: GoogleMapsOverlay;
 	private swisstopoBaseOverlay: { overlay: WMTSTilesOverlay; key: string } | null = null;
-	private swisstopoAdditionalOverlay: { overlay: WMTSTilesOverlay; key: string } | null = null;
+	private additionalOverlay: { overlay: WMTSTilesOverlay | SnowImageOverlay; key: string } | null = null;
+	private snowOverlay = new SnowImageOverlay({ opacity: DEFAULT_ADDITIONAL_LAYER_OPACITY });
 	private googleTilesOverlayPlugin!: ImageOverlayPlugin;
 	private swisstopoTerrainOverlayPlugin!: ImageOverlayPlugin;
 	private swisstopo3DObjectOverlayPlugin!: ImageOverlayPlugin;
@@ -244,61 +246,54 @@ export class TilesManagerService {
 					color: 0xffffff,
 					opacity: 1,
 				});
-				this.swisstopoTerrainOverlayPlugin?.addOverlay(newBaseOverlay, 0);
 
-				// If existing overlay, wait for new overlay to be loaded before deleting the old one.
-				if (this.swisstopoBaseOverlay) {
-					const oldBaseOverlay = this.swisstopoBaseOverlay.overlay;
-					const cleanupOldOverlay = () => {
-						this.swisstopoTerrainTiles.removeEventListener('needs-update', cleanupOldOverlay);
-						this.swisstopoTerrainOverlayPlugin?.deleteOverlay(oldBaseOverlay);
-					};
-					this.swisstopoTerrainTiles.addEventListener('needs-update', cleanupOldOverlay);
-				} else {
-					this.swisstopo3DObjectOverlayPlugin?.addOverlay(newBaseOverlay);
-				}
-				this.swisstopoBaseOverlay = { overlay: newBaseOverlay, key: newBaseOverlayKey };
+				this.swisstopoBaseOverlay = this.swapOverlay(
+					this.swisstopoBaseOverlay,
+					newBaseOverlay,
+					newBaseOverlayKey,
+					0,
+					true
+				) as never; // TODO: Remove all these "never" casts once SnowImageOverlay properly extends from ImageOverlay.
 			}
 		}
 
-		if ($event.swisstopoAdditionalOverlay?.layer) {
-			const timeDimension =
-				$event.swisstopoAdditionalOverlay?.timeDimension === referenceDate.getFullYear().toString()
-					? 'current'
-					: $event.swisstopoAdditionalOverlay?.timeDimension;
-			const additionalOverlayOpacity =
-				$event.swisstopoAdditionalOverlay.opacity ?? DEFAULT_ADDITIONAL_LAYER_OPACITY;
-			const newAdditionalOverlayKey = `${$event.swisstopoAdditionalOverlay?.layer}:${timeDimension}`;
+		const isSnow = $event.snowDepthOverlay?.enabled === true;
+		const isWmts = !!$event.swisstopoAdditionalOverlay?.layer;
+		if (isSnow) {
+			const newKey = '__snow-depth__';
+			this.snowOverlay.opacity = $event.snowDepthOverlay!.opacity ?? DEFAULT_ADDITIONAL_LAYER_OPACITY;
 
-			if (this.swisstopoAdditionalOverlay && this.swisstopoAdditionalOverlay.key === newAdditionalOverlayKey) {
+			if (this.additionalOverlay?.key !== newKey) {
 				// Avoid deleting/recreating overlay when only opacity changes.
-				this.swisstopoAdditionalOverlay.overlay.opacity = additionalOverlayOpacity;
+				this.additionalOverlay = this.swapOverlay(this.additionalOverlay, this.snowOverlay, newKey, 10);
+			}
+		} else if (isWmts) {
+			const timeDimension =
+				$event.swisstopoAdditionalOverlay!.timeDimension === referenceDate.getFullYear().toString()
+					? 'current'
+					: $event.swisstopoAdditionalOverlay!.timeDimension;
+			const additionalOverlayOpacity =
+				$event.swisstopoAdditionalOverlay!.opacity ?? DEFAULT_ADDITIONAL_LAYER_OPACITY;
+			const newKey = `${$event.swisstopoAdditionalOverlay!.layer}:${timeDimension}`;
+
+			if (this.additionalOverlay?.key === newKey) {
+				// Avoid deleting/recreating overlay when only opacity changes.
+				this.additionalOverlay.overlay.opacity = additionalOverlayOpacity;
 			} else {
 				const newAdditionalOverlay = new WMTSTilesOverlay({
 					capabilities: this.swisstopoWMTSCapabilities(),
-					layer: $event.swisstopoAdditionalOverlay?.layer,
+					layer: $event.swisstopoAdditionalOverlay!.layer,
 					style: 'default',
 					dimensions: { Time: timeDimension },
 					color: 0xffffff,
 					opacity: additionalOverlayOpacity,
 				});
 
-				this.swisstopoTerrainOverlayPlugin?.addOverlay(newAdditionalOverlay, 10);
-
-				if (this.swisstopoAdditionalOverlay) {
-					const oldAdditionalOverlay = this.swisstopoAdditionalOverlay.overlay;
-					const cleanupOld = () => {
-						this.swisstopoTerrainTiles.removeEventListener('needs-update', cleanupOld);
-						this.swisstopoTerrainOverlayPlugin?.deleteOverlay(oldAdditionalOverlay);
-					};
-					this.swisstopoTerrainTiles.addEventListener('needs-update', cleanupOld);
-				}
-
-				this.swisstopoAdditionalOverlay = { overlay: newAdditionalOverlay, key: newAdditionalOverlayKey };
+				this.additionalOverlay = this.swapOverlay(this.additionalOverlay, newAdditionalOverlay, newKey, 10);
 			}
-		} else if (this.swisstopoAdditionalOverlay) {
-			this.swisstopoTerrainOverlayPlugin?.deleteOverlay(this.swisstopoAdditionalOverlay.overlay);
-			this.swisstopoAdditionalOverlay = null;
+		} else if (this.additionalOverlay) {
+			this.swisstopoTerrainOverlayPlugin?.deleteOverlay(this.additionalOverlay.overlay as never);
+			this.additionalOverlay = null;
 		}
 
 		this.sceneManager.renderingNeedsUpdate = true;
@@ -372,6 +367,30 @@ export class TilesManagerService {
 			.add(this.swisstopoTerrainTiles.group.position, 'z', 0, 50)
 			.onChange(onValueChange);
 		swisstopoTerrainTilesPositioningDebugFolder.close();
+
+		const snowOverlayDebugFolder = debugGui.addFolder('Snow Overlay Alignment');
+		const onSnowOverlayUpdated = () => {
+			this.snowOverlay.clearTextureCache();
+
+			// Force the ImageOverlayPlugin to re-render the snow overlay (e.g. after bounds change).
+			this.swisstopoTerrainOverlayPlugin?.deleteOverlay(this.snowOverlay as never);
+			this.swisstopoTerrainOverlayPlugin?.addOverlay(this.snowOverlay as never, 10);
+
+			onValueChange();
+		};
+		snowOverlayDebugFolder
+			.add(this.snowOverlay, 'boundsOffsetX', -50000, 50000, 100)
+			.name('Offset X (easting) [m]')
+			.onChange(onSnowOverlayUpdated);
+		snowOverlayDebugFolder
+			.add(this.snowOverlay, 'boundsOffsetY', -50000, 50000, 100)
+			.name('Offset Y (northing) [m]')
+			.onChange(onSnowOverlayUpdated);
+		snowOverlayDebugFolder
+			.add(this.snowOverlay, 'roundingPasses', 0, 4, 1)
+			.name('Corner rounding passes')
+			.onChange(onSnowOverlayUpdated);
+		snowOverlayDebugFolder.close();
 	}
 
 	resetGoogleDebugColorMode(): void {
@@ -654,5 +673,32 @@ export class TilesManagerService {
 		target.addEventListener('fade-change', () => {
 			this.sceneManager.renderingNeedsUpdate = true;
 		});
+	}
+
+	private swapOverlay(
+		currentOverlay: { overlay: WMTSTilesOverlay | SnowImageOverlay; key: string } | null,
+		newOverlay: WMTSTilesOverlay | SnowImageOverlay,
+		newOverlayKey: string,
+		overlayOrder = 0,
+		addTo3DObjectPlugin = false
+	): { overlay: WMTSTilesOverlay | SnowImageOverlay; key: string } {
+		this.swisstopoTerrainOverlayPlugin?.addOverlay(newOverlay as never, overlayOrder);
+
+		// If existing overlay, wait for new overlay to be loaded before deleting the old one.
+		if (currentOverlay) {
+			const oldOverlay = currentOverlay.overlay;
+			const cleanupOldOverlay = () => {
+				this.swisstopoTerrainTiles.removeEventListener('needs-update', cleanupOldOverlay);
+				this.swisstopoTerrainOverlayPlugin?.deleteOverlay(oldOverlay as any);
+				// TODO: Dispose?
+			};
+			this.swisstopoTerrainTiles.addEventListener('needs-update', cleanupOldOverlay);
+		}
+
+		if (addTo3DObjectPlugin && !currentOverlay) {
+			this.swisstopo3DObjectOverlayPlugin?.addOverlay(newOverlay as never);
+		}
+
+		return { overlay: newOverlay as never, key: newOverlayKey };
 	}
 }
