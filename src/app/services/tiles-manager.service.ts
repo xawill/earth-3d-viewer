@@ -16,6 +16,7 @@ import {
 	WMTSCapabilitiesLoader,
 	WMTSCapabilitiesResult,
 	XYZTilesPlugin,
+	UpdateOnChangePlugin,
 } from '3d-tiles-renderer/plugins';
 import { Mesh, MeshStandardMaterial, Object3D } from 'three';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
@@ -341,6 +342,7 @@ export class TilesManagerService {
 		);
 		target.registerPlugin(new TileCompressionPlugin()); // TODO: Needed?
 		target.registerPlugin(new UnloadTilesPlugin());
+		target.registerPlugin(new UpdateOnChangePlugin());
 		target.registerPlugin(new TilesFadePlugin());
 		target.registerPlugin(
 			new GLTFExtensionsPlugin({
@@ -434,6 +436,7 @@ export class TilesManagerService {
 			})
 		);
 		target.registerPlugin(new UnloadTilesPlugin());
+		target.registerPlugin(new UpdateOnChangePlugin());
 		target.registerPlugin(new TilesFadePlugin()); // TODO: Doesn't seem to have any noticeable impact
 		if (overlaySwissimage) {
 			// TODO: Check how to reuse plugins between tiles sets; currently unsupported (see https://github.com/NASA-AMMOS/3DTilesRendererJS/issues/1264).
@@ -497,6 +500,7 @@ export class TilesManagerService {
 
 		target.registerPlugin(new QuantizedMeshPlugin({ useRecommendedSettings: false }));
 		target.registerPlugin(new UnloadTilesPlugin());
+		target.registerPlugin(new UpdateOnChangePlugin());
 		target.registerPlugin(new TilesFadePlugin());
 
 		const debugPlugin = new DebugTilesPlugin({
@@ -563,6 +567,7 @@ export class TilesManagerService {
 			})
 		);
 		target.registerPlugin(new UnloadTilesPlugin());
+		target.registerPlugin(new UpdateOnChangePlugin());
 		target.registerPlugin(new TilesFadePlugin());
 
 		target.setCamera(this.sceneManager.camera);
