@@ -30,6 +30,7 @@ import { disposeManuallyCreatedMaterials, TileCreasedNormalsPlugin } from '../ut
 import { isMesh } from '../utils/three-type-guards';
 import { SwitzerlandRegion } from '../utils/SwitzerlandRegion';
 import { OutsideSwitzerlandRegion } from '../utils/OutsideSwitzerlandRegion';
+import GUI from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import {
 	DEFAULT_ADDITIONAL_LAYER_OPACITY,
 	ENABLE_DEBUG_PLUGIN,
@@ -305,6 +306,72 @@ export class TilesManagerService {
 
 	getEllipsoid(): Ellipsoid {
 		return this.googleTiles.ellipsoid;
+	}
+
+	registerDebugControls(debugGui: GUI, onValueChange: () => void): void {
+		debugGui
+			.add(this.googleTiles, 'errorTarget', 1, 100)
+			.name('google 3d tiles error target')
+			.onChange(value => {
+				(this.googleTiles.getPluginByName('UPDATE_ON_CHANGE_PLUGIN') as any).needsUpdate = true;
+				onValueChange();
+			});
+		debugGui
+			.add(this.swisstopoTerrainTiles, 'errorTarget', 1, 50)
+			.name('swisstopo terrain error target')
+			.onChange(value => {
+				(this.swisstopoTerrainTiles.getPluginByName('UPDATE_ON_CHANGE_PLUGIN') as any).needsUpdate = true;
+				onValueChange();
+			});
+		debugGui
+			.add(this.swisstopoBuildingsTiles, 'errorTarget', 1, 100)
+			.name('swisstopo buildings error target')
+			.onChange(value => {
+				(this.swisstopoBuildingsTiles.getPluginByName('UPDATE_ON_CHANGE_PLUGIN') as any).needsUpdate = true;
+				onValueChange();
+			});
+		debugGui
+			.add(this.swisstopoTlmTiles, 'errorTarget', 1, 10000)
+			.name('swisstopo tlm error target')
+			.onChange(value => {
+				(this.swisstopoTlmTiles.getPluginByName('UPDATE_ON_CHANGE_PLUGIN') as any).needsUpdate = true;
+				onValueChange();
+			});
+		debugGui
+			.add(this.swisstopoVegetationTiles, 'errorTarget', 1, 50)
+			.name('swisstopo vegetation error target')
+			.onChange(value => {
+				(this.swisstopoVegetationTiles.getPluginByName('UPDATE_ON_CHANGE_PLUGIN') as any).needsUpdate = true;
+				onValueChange();
+			});
+
+		const self = this;
+		const stats = {
+			get googleTilesCachedMB() {
+				return ((self.googleTiles.lruCache as any).cachedBytes / 1000000).toFixed(3); // display in MB
+			},
+			get swisstopoTerrainTilesCachedMB() {
+				return ((self.swisstopoTerrainTiles.lruCache as any).cachedBytes / 1000000).toFixed(3); // display in MB
+			},
+			get swisstopoBuildingsTilesCachedMB() {
+				return ((self.swisstopoBuildingsTiles.lruCache as any).cachedBytes / 1000000).toFixed(3); // display in MB
+			},
+		};
+		debugGui.add(stats, 'googleTilesCachedMB').listen().disable();
+		debugGui.add(stats, 'swisstopoTerrainTilesCachedMB').listen().disable();
+		debugGui.add(stats, 'swisstopoBuildingsTilesCachedMB').listen().disable();
+
+		const swisstopoTerrainTilesPositioningDebugFolder = debugGui.addFolder('Swisstopo Terrain Tiles Positioning');
+		swisstopoTerrainTilesPositioningDebugFolder
+			.add(this.swisstopoTerrainTiles.group.position, 'x', 0, 50)
+			.onChange(onValueChange);
+		swisstopoTerrainTilesPositioningDebugFolder
+			.add(this.swisstopoTerrainTiles.group.position, 'y', 0, 20)
+			.onChange(onValueChange);
+		swisstopoTerrainTilesPositioningDebugFolder
+			.add(this.swisstopoTerrainTiles.group.position, 'z', 0, 50)
+			.onChange(onValueChange);
+		swisstopoTerrainTilesPositioningDebugFolder.close();
 	}
 
 	resetGoogleDebugColorMode(): void {

@@ -9,7 +9,7 @@ import { TilesManagerService } from '../services/tiles-manager.service';
 import { ModelTextureService } from '../services/model-texture.service';
 import { AtmosphereService } from '../services/atmosphere.service';
 import { CameraAnimationService } from '../services/camera-animation.service';
-import { DebugGui } from '../utils/debug-gui';
+import GUI from 'three/examples/jsm/libs/lil-gui.module.min.js';
 
 @Component({
 	selector: 'app-viewer',
@@ -33,15 +33,22 @@ export class ViewerComponent {
 	}
 
 	async ngAfterViewInit() {
+		const debugGui = new GUI({ width: 300 });
+		debugGui.hide();
+		const onDebugValueChange = () => (this.sceneManager.renderingNeedsUpdate = true);
+
 		this.sceneManager.init(this.canvas.nativeElement);
+		this.sceneManager.registerDebugControls(debugGui, onDebugValueChange);
 
 		this.buildingTexture.init();
 
 		this.sceneManager.earth.updateWorldMatrix(true, true);
 
 		await this.atmosphere.init(this.sceneManager);
+		this.atmosphere.registerDebugControls(debugGui, onDebugValueChange);
 
 		await this.tilesManager.init(this.sceneManager, this.buildingTexture);
+		this.tilesManager.registerDebugControls(debugGui, onDebugValueChange);
 
 		this.cameraAnimation.init(this.sceneManager, this.tilesManager.getEllipsoid());
 
@@ -49,18 +56,6 @@ export class ViewerComponent {
 			this.tilesManager.updateAllTiles();
 			this.atmosphere.updateSunMoon(this.referenceDate);
 		});
-
-		/*new DebugGui(
-			this.sceneManager.renderer,
-			this.sceneManager.camera,
-			this.tileManager.googleTiles,
-			this.tileManager.swisstopoTerrainTiles,
-			this.tileManager.swisstopoBuildingsTiles,
-			this.tileManager.swisstopoTlmTiles,
-			this.tileManager.swisstopoVegetationTiles,
-			this.atmosphere.aerialPerspective,
-			() => (this.sceneManager.renderingNeedsUpdate = true)
-		);*/
 	}
 
 	zoomTo(destination: { coords: google.maps.LatLng; elevation: number }): void {

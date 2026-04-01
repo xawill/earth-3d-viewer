@@ -12,6 +12,7 @@ import {
 } from 'three';
 import { EffectComposer, EffectMaterial, RenderPass } from 'postprocessing';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
+import GUI from 'three/examples/jsm/libs/lil-gui.module.min.js';
 
 const REUSABLE_VECTOR3 = new Vector3();
 
@@ -108,6 +109,11 @@ export class SceneManagerService {
 
 	setOnControlsStartCallback(callback: () => void): void {
 		this.onControlsStartCallback = callback;
+	}
+
+	registerDebugControls(debugGui: GUI, onValueChange: () => void): void {
+		debugGui.add(this.camera, 'fov', 0, 90).onChange(onValueChange);
+		debugGui.add(this.renderer, 'toneMappingExposure', 0, 100).onChange(onValueChange);
 	}
 
 	startRenderLoop(onUpdate: () => void): void {

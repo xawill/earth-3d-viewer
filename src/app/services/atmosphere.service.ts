@@ -10,6 +10,7 @@ import {
 import { DitheringEffect, LensFlareEffect } from '@takram/three-geospatial-effects';
 import { SceneManagerService } from './scene-manager.service';
 import { BlackMarbleEffect } from '../utils/black-marble-effect';
+import GUI from 'three/examples/jsm/libs/lil-gui.module.min.js';
 
 @Injectable({ providedIn: 'root' })
 export class AtmosphereService {
@@ -66,6 +67,11 @@ export class AtmosphereService {
 		composer.addPass(new EffectPass(camera, new DitheringEffect()));
 
 		this.aerialPerspective.worldToECEFMatrix.copy(earth.matrixWorld).invert();
+	}
+
+	registerDebugControls(debugGui: GUI, onValueChange: () => void): void {
+		debugGui.add(this.aerialPerspective, 'albedoScale', 0, 2).onChange(onValueChange);
+		debugGui.add(this.aerialPerspective, 'correctAltitude').onChange(onValueChange);
 	}
 
 	updateSunMoon(referenceDate: Date): void {
