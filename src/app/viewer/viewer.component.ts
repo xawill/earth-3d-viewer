@@ -1,5 +1,6 @@
-import { Component, ElementRef, inject, ViewChild } from '@angular/core';
+import { Component, computed, effect, ElementRef, HostListener, inject, signal, ViewChild } from '@angular/core';
 import { WMTSCapabilitiesResult } from '3d-tiles-renderer/plugins';
+import { Raycaster, Vector2 } from 'three';
 import { AddressSearchComponent } from '../address-search/address-search.component';
 import { LayersSettingsComponent, LayersSettings } from '../layers-toggle/layers-toggle.component';
 import { TimeOfDaySettingsComponent, TimeOfDaySettings } from '../time-of-day/time-of-day.component';
@@ -9,6 +10,7 @@ import { TilesManagerService } from '../services/tiles-manager.service';
 import { ModelTextureService } from '../services/model-texture.service';
 import { AtmosphereService } from '../services/atmosphere.service';
 import { CameraAnimationService } from '../services/camera-animation.service';
+import { buildBuildingDisplayRows, buildDwellingSummary, HighlightedBuildingInfo } from './building-info.presenter';
 import GUI from 'three/examples/jsm/libs/lil-gui.module.min.js';
 
 @Component({
@@ -20,7 +22,26 @@ import GUI from 'three/examples/jsm/libs/lil-gui.module.min.js';
 export class ViewerComponent {
 	@ViewChild('canvas') canvas!: ElementRef<HTMLCanvasElement>;
 
+	private readonly CLICK_THRESHOLD_AREA = 25; // 5x5 px
+
 	referenceDate = new Date(); // Now
+
+	highlightedBuildingInfo = signal<HighlightedBuildingInfo | null>(null);
+	highlightedBuildingDisplayRows = computed(() => {
+		const buildingInfo = this.highlightedBuildingInfo();
+		if (!buildingInfo) return [];
+		return buildBuildingDisplayRows(buildingInfo);
+	});
+	dwellingSummaries = computed(() => {
+		const dwellings = this.highlightedBuildingInfo()?.rbdData?.dwellings;
+		if (!dwellings?.length) return [];
+		return dwellings
+			.map(d => ({ ewid: d.ewid, summary: buildDwellingSummary(d) }))
+			.sort((a, b) => (a.ewid && b.ewid ? a.ewid.localeCompare(b.ewid) : 0));
+	});
+
+	private raycaster = new Raycaster();
+	private pointer = new Vector2();
 
 	private sceneManager = inject(SceneManagerService);
 	private tilesManager = inject(TilesManagerService);
@@ -52,10 +73,44 @@ export class ViewerComponent {
 
 		this.cameraAnimation.init(this.sceneManager, this.tilesManager.getEllipsoid());
 
+		// Track pointer across the entire document so clicks on the building-info panel are also caught.
+		document.addEventListener('pointerdown', (event: PointerEvent) => {
+			this.pointer.set(event.clientX, event.clientY);
+		});
+		this.canvas.nativeElement.addEventListener('pointerup', async (event: PointerEvent) => {
+			// this.pointer holds position of pointerdown
+			const dx = event.clientX - this.pointer.x;
+			const dy = event.clientY - this.pointer.y;
+			if (dx * dx + dy * dy > this.CLICK_THRESHOLD_AREA) return; // Was a drag
+
+			// It's a click on the canvas —> try to select a building
+			this.pointer.set(
+				(event.clientX / window.innerWidth) * 2 - 1,
+				-(event.clientY / window.innerHeight) * 2 + 1
+			);
+			this.raycaster.setFromCamera(this.pointer, this.sceneManager.camera);
+
+			const buildingInfo = await this.tilesManager.getHighlightedBuildingInfo(this.raycaster);
+			if (buildingInfo) {
+				this.highlightedBuildingInfo.set(buildingInfo);
+				this.buildingTexture.setHighlightedBuilding(buildingInfo.batchId, buildingInfo.tileOffset);
+				this.sceneManager.renderingNeedsUpdate = true;
+			} else {
+				this.closeBuildingInfo();
+			}
+		});
+
 		this.sceneManager.startRenderLoop(() => {
 			this.tilesManager.updateAllTiles();
 			this.atmosphere.updateSunMoon(this.referenceDate);
 		});
+	}
+
+	@HostListener('document:keydown')
+	closeBuildingInfo(): void {
+		this.highlightedBuildingInfo.set(null);
+		this.buildingTexture.setHighlightedBuilding(-1, -1);
+		this.sceneManager.renderingNeedsUpdate = true;
 	}
 
 	zoomTo(destination: { coords: google.maps.LatLng; elevation: number }): void {

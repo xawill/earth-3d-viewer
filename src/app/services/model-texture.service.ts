@@ -1,7 +1,6 @@
 import { Injectable } from '@angular/core';
 import {
 	BufferAttribute,
-	Color,
 	DataArrayTexture,
 	LinearFilter,
 	LinearMipmapLinearFilter,
@@ -59,11 +58,13 @@ const SWISSTOPO_TLM_MATERIAL = new MeshBasicMaterial({
 
 @Injectable({ providedIn: 'root' })
 export class ModelTextureService {
-	private buildingFacadeTexturesArray!: DataArrayTexture;
-	buildingFacadeTexturesMaterial = new MeshBasicMaterial({
+	private buildingFacadeTexturesMaterial = new MeshBasicMaterial({
 		// Use unlit material (MeshBasicMaterial) for proper albedo; required for atmosphere.
 		color: 0xffffff,
 	});
+	private buildingFacadeTexturesArray!: DataArrayTexture;
+	private highlightedBuildingBatchIdUniform = { value: -1 }; // -1 indicates unselected
+	private highlightedTileOffsetUniform = { value: -1 }; // -1 indicates unselected
 
 	async init(): Promise<void> {
 		const textureSize = BUILDING_FACADE_TEXTURE_SIZE;
@@ -98,6 +99,8 @@ export class ModelTextureService {
 		this.buildingFacadeTexturesMaterial.onBeforeCompile = shader => {
 			shader.uniforms['buildingTextures'] = { value: this.buildingFacadeTexturesArray };
 			shader.uniforms['textureCount'] = { value: BUILDING_FACADE_TEXTURE_URLS.length };
+			shader.uniforms['highlightedBuildingBatchId'] = this.highlightedBuildingBatchIdUniform;
+			shader.uniforms['highlightedTileOffset'] = this.highlightedTileOffsetUniform;
 
 			shader.vertexShader = shader.vertexShader
 				.replace(
@@ -105,8 +108,11 @@ export class ModelTextureService {
 					`
 					#include <common>
 					attribute float _batchid;
+					attribute float _tileoffset;
 
 					varying float batchid;
+					varying float tileoffset;
+					varying float randomizedBatchid;
 					varying vec2 vUvCustom;
 					`
 				)
@@ -115,6 +121,8 @@ export class ModelTextureService {
 					`
 					#include <uv_vertex>
 					batchid = _batchid;
+					tileoffset = _tileoffset;
+					randomizedBatchid = _batchid + _tileoffset;
 					vUvCustom = uv;
 					`
 				);
@@ -127,15 +135,19 @@ export class ModelTextureService {
 
 					uniform sampler2DArray buildingTextures;
 					uniform float textureCount;
+					uniform float highlightedBuildingBatchId;
+					uniform float highlightedTileOffset;
 
 					varying float batchid;
+					varying float tileoffset;
+					varying float randomizedBatchid;
 					varying vec2 vUvCustom;
 					`
 				)
 				.replace(
 					'#include <map_fragment>',
 					`
-					int texIndex = int(mod(float(batchid), float(textureCount)));
+					int texIndex = int(mod(float(randomizedBatchid), float(textureCount)));
 
 					vec4 texColor = texture(
 						buildingTextures,
@@ -143,6 +155,11 @@ export class ModelTextureService {
 					);
 
 					diffuseColor *= texColor;
+
+					if (highlightedBuildingBatchId > -0.5 && abs(batchid - highlightedBuildingBatchId) < 0.5 && abs(tileoffset - highlightedTileOffset) < 0.5) {
+						// Highlight building
+						diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.0, 0.0), 1.0); // Highlight: facade is red
+					}
 					`
 				);
 		};
@@ -158,24 +175,29 @@ export class ModelTextureService {
 				hasMaterialColorOrMap(originalMaterial) &&
 				colorsAreAlmostEqual(originalMaterial.color!, SWISSBUILDINGS3D_FACADE_COLOR);
 			if (isFacade) {
-				// Ensure UVs are set.
 				const positions = mesh.geometry.getAttribute('position') as BufferAttribute;
 				const normals = mesh.geometry.getAttribute('normal') as BufferAttribute;
-				const batchIds = mesh.geometry.getAttribute('_batchid') as BufferAttribute;
 
+				// Ensure UVs are set.
 				let uvs = mesh.geometry.getAttribute('uv') as BufferAttribute;
 				if (!uvs) {
 					uvs = new BufferAttribute(new Float32Array(positions.count * 2), 2);
 					mesh.geometry.setAttribute('uv', uvs);
 				}
+
+				// Give access to tileOffset in the shader for proper building batchId discrimination between tiles.
+				const tileOffset = mesh.geometry.userData['tileOffset'] ?? 0;
+				let tileOffsets = mesh.geometry.getAttribute('_tileoffset') as BufferAttribute;
+				if (!tileOffsets) {
+					tileOffsets = new BufferAttribute(new Float32Array(positions.count).fill(tileOffset), 1);
+					mesh.geometry.setAttribute('_tileoffset', tileOffsets);
+				}
+
 				for (let vertexIdx = 0; vertexIdx < positions.count; vertexIdx++) {
 					const position = REUSABLE_VECTOR3_1.fromBufferAttribute(positions, vertexIdx);
 					const normal = REUSABLE_VECTOR3_2.fromBufferAttribute(normals, vertexIdx);
 					const facadeDirection = REUSABLE_VECTOR3_3.crossVectors(FACADE_UP, normal).normalize();
 					uvs.setXY(vertexIdx, position.dot(facadeDirection), position.z); // NB: z is up, since this is a facade.
-
-					// Offset batchId per tile, to further randomize facade textures accross tiles.
-					batchIds.setX(vertexIdx, batchIds.getX(vertexIdx) + mesh.geometry.userData['tileOffset']);
 				}
 
 				// Properly dispose of original material.
@@ -239,5 +261,10 @@ export class ModelTextureService {
 				mesh.material = await TREE_TRUNK_MATERIAL;
 			}
 		};
+	}
+
+	setHighlightedBuilding(batchId: number, tileOffset: number): void {
+		this.highlightedBuildingBatchIdUniform.value = batchId;
+		this.highlightedTileOffsetUniform.value = tileOffset;
 	}
 }

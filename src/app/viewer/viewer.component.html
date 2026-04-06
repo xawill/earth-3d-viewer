@@ -10,4 +10,25 @@
 	class="absolute right-6 bottom-6"
 	[referenceDate]="referenceDate"
 	(timeOfDaySettings)="updateTimeOfDay($event)" />
+@if (highlightedBuildingDisplayRows(); as rows) {
+	@if (rows.length) {
+		<div class="building-info">
+			<button class="building-info-close" (click)="closeBuildingInfo()" aria-label="Close">×</button>
+			@if (highlightedBuildingInfo()?.buildingName; as name) {
+				<h3 class="building-info-title">{{ name }}</h3>
+			}
+			@for (row of rows; track row.label) {
+				<span class="building-info-label" [attr.data-tooltip]="row.tooltip || null">{{ row.label }}</span>
+				<span class="building-info-value" [innerHTML]="row.value"></span>
+			}
+			@if (dwellingSummaries().length) {
+				<div class="building-info-separator"></div>
+				@for (dw of dwellingSummaries(); track dw.ewid) {
+					<span class="building-info-label">Dwelling {{ dw.ewid }}</span>
+					<span class="dwelling-summary" [innerHTML]="dw.summary"></span>
+				}
+			}
+		</div>
+	}
+}
 <canvas #canvas class="absolute -z-10"></canvas>

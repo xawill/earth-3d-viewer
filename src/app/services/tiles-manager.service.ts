@@ -1,5 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { Ellipsoid, Tile, TilesRenderer } from '3d-tiles-renderer';
+import { BatchTable, Ellipsoid, Tile, TilesRenderer } from '3d-tiles-renderer';
 import {
 	GoogleCloudAuthPlugin,
 	BatchedTilesPlugin,
@@ -18,7 +18,7 @@ import {
 	XYZTilesPlugin,
 	UpdateOnChangePlugin,
 } from '3d-tiles-renderer/plugins';
-import { Mesh, MeshStandardMaterial, Object3D } from 'three';
+import { Mesh, MeshStandardMaterial, Object3D, Raycaster } from 'three';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { environment } from '../../environments/environment';
 import { SceneManagerService } from './scene-manager.service';
@@ -51,6 +51,8 @@ import {
 	VIIRS_BLACK_MARBLE_TILES_URL,
 	ZOOM_LEVEL_COLORS_DEBUG,
 } from '../config/tiles.config';
+import { RbdService } from './rbd.service';
+import { buildBuildingName, HighlightedBuildingInfo } from '../viewer/building-info.presenter';
 
 @Injectable({ providedIn: 'root' })
 export class TilesManagerService {
@@ -82,6 +84,7 @@ export class TilesManagerService {
 	private swisstopo3DObjectOverlayPlugin!: ImageOverlayPlugin;
 
 	private atmosphereService = inject(AtmosphereService);
+	private rbdService = inject(RbdService);
 
 	constructor() {
 		this.dracoLoader = new DRACOLoader();
@@ -397,6 +400,53 @@ export class TilesManagerService {
 		if (this.googleDebugTilesPlugin) {
 			this.googleDebugTilesPlugin.colorMode = 1;
 		}
+	}
+
+	async getHighlightedBuildingInfo(raycaster: Raycaster): Promise<HighlightedBuildingInfo | null> {
+		const intersect = raycaster.intersectObject(this.swisstopoBuildingsTiles.group, true)[0];
+		if (!intersect) {
+			return null;
+		}
+
+		const { face, object } = intersect;
+		if (!face) {
+			return null;
+		}
+		const mesh = object as Mesh;
+
+		const batchidAttr = mesh.geometry.getAttribute('_batchid');
+		if (!batchidAttr) {
+			return null;
+		}
+
+		// Traverse parents to find the batch table.
+		let batchTableObject: Object3D | null = object;
+		while (batchTableObject && !(batchTableObject as any).batchTable) {
+			batchTableObject = batchTableObject.parent;
+		}
+
+		const batchTable = (batchTableObject as any).batchTable as BatchTable;
+		if (!batchTable) {
+			return null;
+		}
+
+		const batchId = Math.round(batchidAttr.getX(face.a)); // NB: batchid is a float attribute, but should be an integer. Round to avoid precision issues preventing proper matching.
+		const batchData = batchTable.getDataFromId(batchId) as Record<string, unknown>;
+		const buildingInfo: HighlightedBuildingInfo = {
+			batchId,
+			tileOffset: mesh.geometry.userData['tileOffset'] ?? 0,
+			buildingName: null,
+			batchData,
+			rbdData: null,
+		};
+
+		const egid = batchData['EGID'] as number | null;
+		if (egid) {
+			buildingInfo.rbdData = await this.rbdService.fetchByEgid(egid);
+		}
+		buildingInfo.buildingName = buildBuildingName(batchData, buildingInfo.rbdData);
+
+		return buildingInfo;
 	}
 
 	private initGoogleTileset(target: TilesRenderer): void {
