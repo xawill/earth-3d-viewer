@@ -54,7 +54,7 @@ const RBD_FIND_BY_EGID_URL =
 	'https://api3.geo.admin.ch/rest/services/api/MapServer/find?layer=ch.bfs.gebaeude_wohnungs_register&searchField=egid&returnGeometry=false&searchText=';
 
 // RBD codes from https://www.housing-stat.ch/catalog/en/4.3/final
-const GSTAT_CODES: Record<number, string> = {
+const _GSTAT_CODES: Record<number, string> = {
 	1001: 'Planned',
 	1002: 'Authorised',
 	1003: 'Under construction',
@@ -99,7 +99,7 @@ const GKLAS_CODES: Record<number, string> = {
 	1277: 'Buildings for growing crops',
 	1278: 'Other non-residential agricultural buildings',
 };
-const GWAERZH_CODES: Record<number, string> = {
+const _GWAERZH_CODES: Record<number, string> = {
 	7400: 'No heat generator',
 	7410: 'PAC heat pump for a single building',
 	7411: 'PAC heat pump for several buildings',
@@ -121,7 +121,7 @@ const GWAERZH_CODES: Record<number, string> = {
 	7461: 'Heat exchanger (including for district heating) for several buildings',
 	7499: 'Other',
 };
-const GENH_CODES: Record<number, string> = {
+const _GENH_CODES: Record<number, string> = {
 	7500: 'None',
 	7501: 'Air',
 	7510: 'Geothermal energy (generic)',

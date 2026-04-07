@@ -20,15 +20,15 @@ import {
 	TOLERANCE_DISTANCE_COORDS_NO_WAIT_TO_DESCENT,
 } from '../config/tiles.config';
 
-const REUSABLE_VECTOR2 = new Vector2();
-const REUSABLE_VECTOR3_1 = new Vector3();
-const REUSABLE_VECTOR3_2 = new Vector3();
-const REUSABLE_MATRIX4 = new Matrix4();
-const REUSABLE_RAY = new Ray();
-
 @Injectable({ providedIn: 'root' })
 export class CameraAnimationService {
 	currentPosition: LatLon & { height: number } = { lon: 0, lat: 0, height: 0 }; // [rad, rad, m]
+
+	private readonly REUSABLE_VECTOR2 = new Vector2();
+	private readonly REUSABLE_VECTOR3_1 = new Vector3();
+	private readonly REUSABLE_VECTOR3_2 = new Vector3();
+	private readonly REUSABLE_MATRIX4 = new Matrix4();
+	private readonly REUSABLE_RAY = new Ray();
 
 	private sceneManager!: SceneManagerService;
 	private ellipsoid!: Ellipsoid;
@@ -45,13 +45,16 @@ export class CameraAnimationService {
 			// From https://gsap.com/community/forums/topic/25830-tweening-value-with-large-number-of-decimals/#comment-125391
 			name: 'precise',
 			init(target: any, vars: any, tween: any, index: any, targets: any) {
+				// eslint-disable-next-line @typescript-eslint/no-this-alias
 				let data: any = this,
 					p,
 					value;
 				data.t = target;
 				for (p in vars) {
 					value = vars[p];
-					typeof value === 'function' && (value = value.call(tween, index, target, targets));
+					if (typeof value === 'function') {
+						value = value.call(tween, index, target, targets);
+					}
 					data.pt = { n: data.pt, p: p, s: target[p], c: value - target[p] };
 					data._props.push(p);
 				}
@@ -99,7 +102,7 @@ export class CameraAnimationService {
 
 		// Update currentPosition in case some user controls interaction moved the position since last address selection
 		this.ellipsoid.getPositionToCartographic(
-			threejsPositionToTiles(REUSABLE_VECTOR3_1.copy(camera.position)),
+			threejsPositionToTiles(this.REUSABLE_VECTOR3_1.copy(camera.position)),
 			this.currentPosition
 		);
 
@@ -164,11 +167,11 @@ export class CameraAnimationService {
 		const descentAnimationDelayTime =
 			rotationDistance < TOLERANCE_DISTANCE_COORDS_NO_WAIT_TO_DESCENT ? 0 : totalAnimationDuration / 2;
 
-		this.raycaster.setFromCamera(REUSABLE_VECTOR2.set(0, 0), camera);
-		REUSABLE_RAY.copy(this.raycaster.ray).applyMatrix4(
-			REUSABLE_MATRIX4.copy(this.sceneManager.earth.matrixWorld).invert()
+		this.raycaster.setFromCamera(this.REUSABLE_VECTOR2.set(0, 0), camera);
+		this.REUSABLE_RAY.copy(this.raycaster.ray).applyMatrix4(
+			this.REUSABLE_MATRIX4.copy(this.sceneManager.earth.matrixWorld).invert()
 		);
-		const intersection = this.ellipsoid.intersectRay(REUSABLE_RAY, this.pivotPoint);
+		const intersection = this.ellipsoid.intersectRay(this.REUSABLE_RAY, this.pivotPoint);
 		if (intersection === null) {
 			// No ray intersection with globe
 			controls.getPivotPoint(this.pivotPoint);
@@ -176,10 +179,10 @@ export class CameraAnimationService {
 			// Transform result from ellipsoid local space back to world space
 			this.pivotPoint.applyMatrix4(this.sceneManager.earth.matrixWorld);
 		}
-		const pivotRadius = REUSABLE_VECTOR3_1.subVectors(camera.position, this.pivotPoint).length();
+		const pivotRadius = this.REUSABLE_VECTOR3_1.subVectors(camera.position, this.pivotPoint).length();
 		this.resetOrbitCameraPosition
 			.copy(this.pivotPoint)
-			.addScaledVector(REUSABLE_VECTOR3_2.copy(this.pivotPoint).normalize(), pivotRadius);
+			.addScaledVector(this.REUSABLE_VECTOR3_2.copy(this.pivotPoint).normalize(), pivotRadius);
 
 		getUpDirection(this.ellipsoid, this.pivotPoint, this.targetCameraUp);
 
@@ -209,7 +212,7 @@ export class CameraAnimationService {
 					camera.up.copy(Object3D.DEFAULT_UP);
 					// Update currentPosition
 					this.ellipsoid.getPositionToCartographic(
-						threejsPositionToTiles(REUSABLE_VECTOR3_1.copy(camera.position)),
+						threejsPositionToTiles(this.REUSABLE_VECTOR3_1.copy(camera.position)),
 						this.currentPosition
 					);
 				});

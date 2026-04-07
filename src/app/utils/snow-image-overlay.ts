@@ -46,6 +46,12 @@ export class SnowImageOverlay extends TiledImageOverlay {
 	override readonly projection = PROJECTION;
 	override readonly aspectRatio = 2; // EPSG:4326: longitude [-180,180] is 2× the latitude range [-90,90]
 
+	// Manual offsets to help align the overlay on top of Switzerland
+	boundsOffsetX = 0; // LV03 easting [m]
+	boundsOffsetY = 0; // LV03 northing [m]
+
+	roundingPasses = 4; // Number of Scale2x passes for corner rounding. 0 = sharp pixels.
+
 	private processedCanvas: HTMLCanvasElement | null = null;
 	private textureCache = new Map<string, { texture: CanvasTexture }>();
 
@@ -53,16 +59,29 @@ export class SnowImageOverlay extends TiledImageOverlay {
 	private srcImageData: ImageData | null = null; // Source image data after Scale2x upscaling — used for per-pixel sampling in getTexture.
 	private appliedRoundingPasses = -1; // roundingPasses used to produce srcImageData
 
-	// Manual offsets to help align the overlay on top of Switzerland
-	boundsOffsetX = 0; // LV03 easting [m]
-	boundsOffsetY = 0; // LV03 northing [m]
-
-	roundingPasses = 4; // Number of Scale2x passes for corner rounding. 0 = sharp pixels.
-
 	constructor(options: { opacity?: number; color?: number } = {}) {
 		super();
 		this.opacity = options.opacity ?? DEFAULT_ADDITIONAL_LAYER_OPACITY;
 		this.color = new Color(options.color ?? 0xffffff);
+	}
+
+	// Returns the normalized bounds recomputed from LV03 corners shifted by the current offsets.
+	private get effectiveBounds(): number[] {
+		if (this.boundsOffsetX === 0 && this.boundsOffsetY === 0) return NORMALIZED_BOUNDS;
+		const sw = lv03ToWgs84(
+			SNOW_OVERLAY_LV03_XMIN + this.boundsOffsetX,
+			SNOW_OVERLAY_LV03_YMIN + this.boundsOffsetY
+		);
+		const ne = lv03ToWgs84(
+			SNOW_OVERLAY_LV03_XMAX + this.boundsOffsetX,
+			SNOW_OVERLAY_LV03_YMAX + this.boundsOffsetY
+		);
+		return PROJECTION.toNormalizedRange([
+			sw.lon * MathUtils.DEG2RAD,
+			sw.lat * MathUtils.DEG2RAD,
+			ne.lon * MathUtils.DEG2RAD,
+			ne.lat * MathUtils.DEG2RAD,
+		]);
 	}
 
 	/** Call after changing boundsOffsetX/Y to flush cached textures so they are re-cropped. */
@@ -85,22 +104,6 @@ export class SnowImageOverlay extends TiledImageOverlay {
 			this.rawImageData = ctx.getImageData(0, 0, this.processedCanvas.width, this.processedCanvas.height);
 			this.applySmoothing();
 		}
-	}
-
-	/** (Re-)apply Scale2x upscaling to the raw source image. Called at init and when roundingPasses changes. */
-	private applySmoothing(): void {
-		if (!this.rawImageData) return;
-		let current = new ImageData(
-			new Uint8ClampedArray(this.rawImageData.data),
-			this.rawImageData.width,
-			this.rawImageData.height
-		);
-		const passes = Math.min(this.roundingPasses, 4); // cap at 4 passes (16× upscale)
-		for (let i = 0; i < passes; i++) {
-			current = SnowImageOverlay.scale2x(current);
-		}
-		this.srcImageData = current;
-		this.appliedRoundingPasses = this.roundingPasses;
 	}
 
 	override hasContent(range: number[], _tile?: unknown): boolean {
@@ -182,6 +185,22 @@ export class SnowImageOverlay extends TiledImageOverlay {
 		this.srcImageData = null;
 	}
 
+	/** (Re-)apply Scale2x upscaling to the raw source image. Called at init and when roundingPasses changes. */
+	private applySmoothing(): void {
+		if (!this.rawImageData) return;
+		let current = new ImageData(
+			new Uint8ClampedArray(this.rawImageData.data),
+			this.rawImageData.width,
+			this.rawImageData.height
+		);
+		const passes = Math.min(this.roundingPasses, 4); // cap at 4 passes (16× upscale)
+		for (let i = 0; i < passes; i++) {
+			current = SnowImageOverlay.scale2x(current);
+		}
+		this.srcImageData = current;
+		this.appliedRoundingPasses = this.roundingPasses;
+	}
+
 	private async fetchCurrentImageUrl(): Promise<string | null> {
 		try {
 			const response = await this.fetch(METEOSWISS_SNOW_OVERVIEW_URL);
@@ -246,25 +265,6 @@ export class SnowImageOverlay extends TiledImageOverlay {
 			console.error('SnowImageOverlay: failed to load/process image', error);
 			return null;
 		}
-	}
-
-	// Returns the normalized bounds recomputed from LV03 corners shifted by the current offsets.
-	private get effectiveBounds(): number[] {
-		if (this.boundsOffsetX === 0 && this.boundsOffsetY === 0) return NORMALIZED_BOUNDS;
-		const sw = lv03ToWgs84(
-			SNOW_OVERLAY_LV03_XMIN + this.boundsOffsetX,
-			SNOW_OVERLAY_LV03_YMIN + this.boundsOffsetY
-		);
-		const ne = lv03ToWgs84(
-			SNOW_OVERLAY_LV03_XMAX + this.boundsOffsetX,
-			SNOW_OVERLAY_LV03_YMAX + this.boundsOffsetY
-		);
-		return PROJECTION.toNormalizedRange([
-			sw.lon * MathUtils.DEG2RAD,
-			sw.lat * MathUtils.DEG2RAD,
-			ne.lon * MathUtils.DEG2RAD,
-			ne.lat * MathUtils.DEG2RAD,
-		]);
 	}
 
 	/**

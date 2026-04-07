@@ -65,8 +65,9 @@ export function copyMaterialSharedProperties(source: Material, target: Material)
 		if (key in target) {
 			try {
 				(target as any)[key] = (source as any)[key];
-			} catch (e: any) {
-				console.warn(`Could not assign property ${String(key)}:`, e.message);
+			} catch (e: unknown) {
+				const message = e instanceof Error ? e.message : String(e);
+				console.warn(`Could not assign property ${String(key)}:`, message);
 			}
 		}
 	}

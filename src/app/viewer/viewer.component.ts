@@ -1,4 +1,4 @@
-import { Component, computed, effect, ElementRef, HostListener, inject, signal, ViewChild } from '@angular/core';
+import { Component, computed, ElementRef, HostListener, inject, signal, ViewChild, AfterViewInit } from '@angular/core';
 import { WMTSCapabilitiesResult } from '3d-tiles-renderer/plugins';
 import { Raycaster, Vector2 } from 'three';
 import { AddressSearchComponent } from '../address-search/address-search.component';
@@ -14,15 +14,13 @@ import { buildBuildingDisplayRows, buildDwellingSummary, HighlightedBuildingInfo
 import GUI from 'three/examples/jsm/libs/lil-gui.module.min.js';
 
 @Component({
-	selector: 'app-viewer',
+	selector: 'ce-viewer',
 	imports: [AddressSearchComponent, LayersSettingsComponent, TimeOfDaySettingsComponent],
 	templateUrl: './viewer.component.html',
 	styleUrl: './viewer.component.css',
 })
-export class ViewerComponent {
+export class ViewerComponent implements AfterViewInit {
 	@ViewChild('canvas') canvas!: ElementRef<HTMLCanvasElement>;
-
-	private readonly CLICK_THRESHOLD_AREA = 25; // 5x5 px
 
 	referenceDate = new Date(); // Now
 
@@ -40,6 +38,7 @@ export class ViewerComponent {
 			.sort((a, b) => (a.ewid && b.ewid ? a.ewid.localeCompare(b.ewid) : 0));
 	});
 
+	private readonly CLICK_THRESHOLD_AREA = 25; // 5x5 px
 	private raycaster = new Raycaster();
 	private pointer = new Vector2();
 
@@ -48,6 +47,13 @@ export class ViewerComponent {
 	private buildingTexture = inject(ModelTextureService);
 	private atmosphere = inject(AtmosphereService);
 	private cameraAnimation = inject(CameraAnimationService);
+
+	@HostListener('document:keydown')
+	closeBuildingInfo(): void {
+		this.highlightedBuildingInfo.set(null);
+		this.buildingTexture.setHighlightedBuilding(-1, -1);
+		this.sceneManager.renderingNeedsUpdate = true;
+	}
 
 	swisstopoWMTSCapabilities(): WMTSCapabilitiesResult | null {
 		return this.tilesManager.swisstopoWMTSCapabilities();
@@ -104,13 +110,6 @@ export class ViewerComponent {
 			this.tilesManager.updateAllTiles();
 			this.atmosphere.updateSunMoon(this.referenceDate);
 		});
-	}
-
-	@HostListener('document:keydown')
-	closeBuildingInfo(): void {
-		this.highlightedBuildingInfo.set(null);
-		this.buildingTexture.setHighlightedBuilding(-1, -1);
-		this.sceneManager.renderingNeedsUpdate = true;
 	}
 
 	zoomTo(destination: { coords: google.maps.LatLng; elevation: number }): void {

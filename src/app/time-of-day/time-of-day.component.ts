@@ -1,7 +1,7 @@
 import { Component, input, output, signal, computed, effect } from '@angular/core';
 
 @Component({
-	selector: 'time-of-day-settings',
+	selector: 'ce-time-of-day-settings',
 	imports: [],
 	templateUrl: './time-of-day.component.html',
 	styleUrl: './time-of-day.component.css',

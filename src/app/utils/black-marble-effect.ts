@@ -13,8 +13,6 @@ import {
 	WebGLRenderTarget,
 } from 'three';
 
-const REUSABLE_VECTOR2 = new Vector2();
-
 const fragmentShader = /* glsl */ `
 uniform sampler2D blackMarbleMap;
 uniform sampler2D blackMarbleDepth;
@@ -62,6 +60,8 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth,
 `;
 
 export class BlackMarbleEffect extends Effect {
+	private readonly REUSABLE_VECTOR2 = new Vector2();
+
 	private blackMarble: Object3D | null = null;
 	private worldToECEFMatrix = new Matrix4();
 	private renderTarget = new WebGLRenderTarget(1, 1, {
@@ -70,9 +70,9 @@ export class BlackMarbleEffect extends Effect {
 	});
 
 	constructor(
-		private scene: Scene,
-		private camera: PerspectiveCamera,
-		private earth: Object3D
+		private readonly scene: Scene,
+		private readonly camera: PerspectiveCamera,
+		private readonly earth: Object3D
 	) {
 		super('BlackMarbleEffect', fragmentShader, {
 			attributes: EffectAttribute.DEPTH,
@@ -121,7 +121,7 @@ export class BlackMarbleEffect extends Effect {
 		// Render black marble tiles to off-screen target
 		if (this.blackMarble) {
 			// Resize render target to match canvas
-			const size = renderer.getSize(REUSABLE_VECTOR2);
+			const size = renderer.getSize(this.REUSABLE_VECTOR2);
 			const pixelRatio = renderer.getPixelRatio();
 			const w = Math.floor(size.x * pixelRatio);
 			const h = Math.floor(size.y * pixelRatio);

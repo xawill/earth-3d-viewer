@@ -1,6 +1,7 @@
 import { Ellipsoid, WGS84_RADIUS } from '3d-tiles-renderer';
 import { Vector3 } from 'three';
 
+// TODO: Should be private readonly
 const REUSABLE_VECTOR3_1 = new Vector3();
 const REUSABLE_VECTOR3_2 = new Vector3();
 

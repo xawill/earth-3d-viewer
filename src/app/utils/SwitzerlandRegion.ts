@@ -8,7 +8,7 @@ export class SwitzerlandRegion extends BaseRegion {
 		new Matrix4()
 	);
 
-	constructor(private cameraElevationThreshold: number) {
+	constructor(private readonly cameraElevationThreshold: number) {
 		super({
 			errorTarget: Infinity,
 			mask: true,
@@ -16,7 +16,7 @@ export class SwitzerlandRegion extends BaseRegion {
 		this.obb.update();
 	}
 
-	override intersectsTile(boundingVolume: TileBoundingVolume, tile: Tile, tilesRenderer: TilesRenderer): boolean {
+	override intersectsTile(boundingVolume: TileBoundingVolume, _tile: Tile, tilesRenderer: TilesRenderer): boolean {
 		const cameraElevation = tilesRenderer.ellipsoid.getPositionElevation(tilesRenderer.cameras[0].position);
 		if (cameraElevation < this.cameraElevationThreshold) {
 			return boundingVolume.intersectsOBB(this.obb);
@@ -25,7 +25,11 @@ export class SwitzerlandRegion extends BaseRegion {
 		}
 	}
 
-	override calculateDistance(boundingVolume: TileBoundingVolume, tile: Tile, tilesRenderer: TilesRenderer): number {
+	override calculateDistance(
+		_boundingVolume: TileBoundingVolume,
+		_tile: Tile,
+		_tilesRenderer: TilesRenderer
+	): number {
 		// TODO: Implement?
 		return Infinity;
 	}

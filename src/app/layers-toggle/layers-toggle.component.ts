@@ -1,4 +1,4 @@
-import { Component, input, output, signal, computed, effect } from '@angular/core';
+import { Component, input, output, signal, computed, effect, AfterViewInit } from '@angular/core';
 import { initFlowbite } from 'flowbite';
 import { WMTSCapabilitiesResult } from '3d-tiles-renderer/plugins';
 import {
@@ -9,12 +9,12 @@ import {
 } from '../config/tiles.config';
 
 @Component({
-	selector: 'layers-settings',
+	selector: 'ce-layers-settings',
 	imports: [],
 	templateUrl: './layers-toggle.component.html',
 	styleUrl: './layers-toggle.component.css',
 })
-export class LayersSettingsComponent {
+export class LayersSettingsComponent implements AfterViewInit {
 	readonly SNOW_DEPTH_LAYER_ID = '__snow-depth__';
 
 	layersSettings = output<LayersSettings>();
@@ -142,34 +142,6 @@ export class LayersSettingsComponent {
 		initFlowbite();
 	}
 
-	private getTimeDimensionsForLayer(layerIdentifier: string): string[] {
-		const caps = this.swisstopoWMTSCapabilities();
-		if (!caps?.layers) {
-			return [];
-		}
-		const layer = caps.layers.find(l => l.identifier === layerIdentifier);
-		if (!layer?.dimensions || layer.dimensions.length === 0) {
-			return [];
-		}
-		const timeDimension = layer.dimensions.find(dim => dim.identifier === 'Time');
-		return timeDimension?.values ?? [];
-	}
-
-	private getDefaultTimeDimensionForLayer(layerIdentifier: string): string {
-		const availableTimeDimensions = this.getTimeDimensionsForLayer(layerIdentifier);
-		if (availableTimeDimensions.length === 0) {
-			return 'current';
-		}
-
-		// If 'current' is available, use it
-		if (availableTimeDimensions.includes('current')) {
-			return 'current';
-		}
-
-		// Otherwise, use the most recent year (first item in the array)
-		return availableTimeDimensions[0];
-	}
-
 	// Event handlers for template
 	onGoogleTilesToggle(event: Event): void {
 		const checked = (event.target as HTMLInputElement).checked;
@@ -216,6 +188,34 @@ export class LayersSettingsComponent {
 	onAdditionalOverlayOpacityChange(event: Event): void {
 		const value = (event.target as HTMLInputElement).value;
 		this.selectedAdditionalLayerOpacity.set(+value);
+	}
+
+	private getTimeDimensionsForLayer(layerIdentifier: string): string[] {
+		const caps = this.swisstopoWMTSCapabilities();
+		if (!caps?.layers) {
+			return [];
+		}
+		const layer = caps.layers.find(l => l.identifier === layerIdentifier);
+		if (!layer?.dimensions || layer.dimensions.length === 0) {
+			return [];
+		}
+		const timeDimension = layer.dimensions.find(dim => dim.identifier === 'Time');
+		return timeDimension?.values ?? [];
+	}
+
+	private getDefaultTimeDimensionForLayer(layerIdentifier: string): string {
+		const availableTimeDimensions = this.getTimeDimensionsForLayer(layerIdentifier);
+		if (availableTimeDimensions.length === 0) {
+			return 'current';
+		}
+
+		// If 'current' is available, use it
+		if (availableTimeDimensions.includes('current')) {
+			return 'current';
+		}
+
+		// Otherwise, use the most recent year (first item in the array)
+		return availableTimeDimensions[0];
 	}
 }
 

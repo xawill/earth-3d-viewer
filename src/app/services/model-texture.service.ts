@@ -29,10 +29,6 @@ import {
 } from '../utils/graphics-utils';
 import { hasMaterialColorOrMap } from '../utils/three-type-guards';
 
-const REUSABLE_VECTOR3_1 = new Vector3();
-const REUSABLE_VECTOR3_2 = new Vector3();
-const REUSABLE_VECTOR3_3 = new Vector3();
-
 const TREE_FOLIAGE_MATERIAL = TEXTURE_LOADER.loadAsync('assets/tree-foliage.jpg').then(texture => {
 	texture.colorSpace = SRGBColorSpace;
 	texture.wrapS = texture.wrapT = RepeatWrapping;
@@ -58,6 +54,10 @@ const SWISSTOPO_TLM_MATERIAL = new MeshBasicMaterial({
 
 @Injectable({ providedIn: 'root' })
 export class ModelTextureService {
+	private readonly REUSABLE_VECTOR3_1 = new Vector3();
+	private readonly REUSABLE_VECTOR3_2 = new Vector3();
+	private readonly REUSABLE_VECTOR3_3 = new Vector3();
+
 	private buildingFacadeTexturesMaterial = new MeshBasicMaterial({
 		// Use unlit material (MeshBasicMaterial) for proper albedo; required for atmosphere.
 		color: 0xffffff,
@@ -194,9 +194,9 @@ export class ModelTextureService {
 				}
 
 				for (let vertexIdx = 0; vertexIdx < positions.count; vertexIdx++) {
-					const position = REUSABLE_VECTOR3_1.fromBufferAttribute(positions, vertexIdx);
-					const normal = REUSABLE_VECTOR3_2.fromBufferAttribute(normals, vertexIdx);
-					const facadeDirection = REUSABLE_VECTOR3_3.crossVectors(FACADE_UP, normal).normalize();
+					const position = this.REUSABLE_VECTOR3_1.fromBufferAttribute(positions, vertexIdx);
+					const normal = this.REUSABLE_VECTOR3_2.fromBufferAttribute(normals, vertexIdx);
+					const facadeDirection = this.REUSABLE_VECTOR3_3.crossVectors(FACADE_UP, normal).normalize();
 					uvs.setXY(vertexIdx, position.dot(facadeDirection), position.z); // NB: z is up, since this is a facade.
 				}
 

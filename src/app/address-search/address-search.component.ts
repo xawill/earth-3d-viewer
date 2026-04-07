@@ -2,18 +2,13 @@ import { Component, inject, input, output, signal, computed, effect } from '@ang
 import { LatLng } from '../utils/map-utils';
 import { GoogleMapsService } from '../services/google-maps.service';
 
-const INPUT_AUTOCOMPLETE_DEBOUNCE_TIME = 500; // [ms]
-const MIN_INPUT_LENGTH_FOR_AUTOCOMPLETE = 3;
-
 @Component({
-	selector: 'address-search',
+	selector: 'ce-address-search',
 	imports: [],
 	templateUrl: './address-search.component.html',
 	styleUrl: './address-search.component.css',
 })
 export class AddressSearchComponent {
-	private googleMapsService = inject(GoogleMapsService);
-
 	searchedCoords = output<{ coords: google.maps.LatLng; elevation: number }>();
 
 	originCoords = input<LatLng>({ lat: 0, lng: 0 });
@@ -21,29 +16,29 @@ export class AddressSearchComponent {
 	addressInput = signal('');
 	suggestions = signal<google.maps.places.AutocompleteSuggestion[] | null>(null);
 	isSearching = signal(false);
-	isInputValid = computed(() => this.addressInput().trim().length >= MIN_INPUT_LENGTH_FOR_AUTOCOMPLETE);
+	isInputValid = computed(() => this.addressInput().trim().length >= this.MIN_INPUT_LENGTH_FOR_AUTOCOMPLETE);
+
+	private readonly INPUT_AUTOCOMPLETE_DEBOUNCE_TIME = 500; // [ms]
+	private readonly MIN_INPUT_LENGTH_FOR_AUTOCOMPLETE = 3;
+
+	private googleMapsService = inject(GoogleMapsService);
 
 	constructor() {
 		// Watch address input changes for autocomplete
-		effect((onCleanup) => {
+		effect(onCleanup => {
 			const input = this.addressInput();
 			const originCoords = this.originCoords();
 
-			let cancelled = false;
 			const debounceTimer = setTimeout(async () => {
 				try {
-					const suggestionsResult = await this.googleMapsService.findSuggestionsForInput(
-						input,
-						originCoords
-					);
+					const suggestionsResult = await this.googleMapsService.findSuggestionsForInput(input, originCoords);
 					this.suggestions.set(suggestionsResult ? suggestionsResult.suggestions : null);
 				} catch {
 					this.suggestions.set(null);
 				}
-			}, INPUT_AUTOCOMPLETE_DEBOUNCE_TIME);
+			}, this.INPUT_AUTOCOMPLETE_DEBOUNCE_TIME);
 
 			onCleanup(() => {
-				cancelled = true;
 				clearTimeout(debounceTimer);
 				this.suggestions.set(null);
 			});
@@ -64,7 +59,7 @@ export class AddressSearchComponent {
 
 	search(): void {
 		const address = this.addressInput().trim();
-		if (address.length >= MIN_INPUT_LENGTH_FOR_AUTOCOMPLETE) {
+		if (address.length >= this.MIN_INPUT_LENGTH_FOR_AUTOCOMPLETE) {
 			this.isSearching.set(true);
 			this.googleMapsService
 				.findCoordsForAddress(address)

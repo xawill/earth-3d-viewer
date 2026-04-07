@@ -2,10 +2,11 @@ import { TileBoundingVolume, Tile, TilesRenderer, OBB } from '3d-tiles-renderer'
 import { BaseRegion } from '3d-tiles-renderer/plugins';
 import { Box3, Matrix4, Vector3 } from 'three';
 
-const REUSABLE_VECTOR3 = new Vector3();
 const SWITZERLAND_OBB_INTERSECTION_EPSILON = 10000; // [m]
 
 export class OutsideSwitzerlandRegion extends BaseRegion {
+	private readonly REUSABLE_VECTOR3 = new Vector3();
+
 	private obb = new OBB(
 		new Box3( // Coordinates are taken from Swisstopo Quantized Mesh terrain tiles at zoom level 6 ([66, 48] and [67, 48]). A constant is added because a tile was not properly contained in north east corner.
 			new Vector3(4207680.518821144, 415002.0934445335, 4486612.479957226).subScalar(
@@ -35,7 +36,7 @@ export class OutsideSwitzerlandRegion extends BaseRegion {
 		)
 	);
 
-	constructor(private cameraElevationThreshold: number) {
+	constructor(private readonly cameraElevationThreshold: number) {
 		super({
 			errorTarget: Infinity,
 			mask: true,
@@ -43,14 +44,14 @@ export class OutsideSwitzerlandRegion extends BaseRegion {
 		this.obb.update();
 	}
 
-	override intersectsTile(boundingVolume: TileBoundingVolume, tile: Tile, tilesRenderer: TilesRenderer): boolean {
+	override intersectsTile(boundingVolume: TileBoundingVolume, _tile: Tile, tilesRenderer: TilesRenderer): boolean {
 		const cameraElevation = tilesRenderer.ellipsoid.getPositionElevation(tilesRenderer.cameras[0].position);
 		if (cameraElevation > this.cameraElevationThreshold) {
 			return true;
 		} else {
 			let tileInsideSwitzerland = true;
 			for (const p of boundingVolume.obb!.points) {
-				if (!this.obb.containsPoint(REUSABLE_VECTOR3.copy(p).applyMatrix4(this.obb.transform))) {
+				if (!this.obb.containsPoint(this.REUSABLE_VECTOR3.copy(p).applyMatrix4(this.obb.transform))) {
 					tileInsideSwitzerland = false;
 					break;
 				}
@@ -60,7 +61,11 @@ export class OutsideSwitzerlandRegion extends BaseRegion {
 		}
 	}
 
-	override calculateDistance(boundingVolume: TileBoundingVolume, tile: Tile, tilesRenderer: TilesRenderer): number {
+	override calculateDistance(
+		_boundingVolume: TileBoundingVolume,
+		_tile: Tile,
+		_tilesRenderer: TilesRenderer
+	): number {
 		// TODO: Implement?
 		return Infinity;
 	}

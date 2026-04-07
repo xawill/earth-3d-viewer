@@ -310,49 +310,49 @@ export class TilesManagerService {
 		debugGui
 			.add(this.googleTiles, 'errorTarget', 1, 100)
 			.name('google 3d tiles error target')
-			.onChange(value => {
+			.onChange(_value => {
 				(this.googleTiles.getPluginByName('UPDATE_ON_CHANGE_PLUGIN') as any).needsUpdate = true;
 				onValueChange();
 			});
 		debugGui
 			.add(this.swisstopoTerrainTiles, 'errorTarget', 1, 50)
 			.name('swisstopo terrain error target')
-			.onChange(value => {
+			.onChange(_value => {
 				(this.swisstopoTerrainTiles.getPluginByName('UPDATE_ON_CHANGE_PLUGIN') as any).needsUpdate = true;
 				onValueChange();
 			});
 		debugGui
 			.add(this.swisstopoBuildingsTiles, 'errorTarget', 1, 100)
 			.name('swisstopo buildings error target')
-			.onChange(value => {
+			.onChange(_value => {
 				(this.swisstopoBuildingsTiles.getPluginByName('UPDATE_ON_CHANGE_PLUGIN') as any).needsUpdate = true;
 				onValueChange();
 			});
 		debugGui
 			.add(this.swisstopoTlmTiles, 'errorTarget', 1, 10000)
 			.name('swisstopo tlm error target')
-			.onChange(value => {
+			.onChange(_value => {
 				(this.swisstopoTlmTiles.getPluginByName('UPDATE_ON_CHANGE_PLUGIN') as any).needsUpdate = true;
 				onValueChange();
 			});
 		debugGui
 			.add(this.swisstopoVegetationTiles, 'errorTarget', 1, 50)
 			.name('swisstopo vegetation error target')
-			.onChange(value => {
+			.onChange(_value => {
 				(this.swisstopoVegetationTiles.getPluginByName('UPDATE_ON_CHANGE_PLUGIN') as any).needsUpdate = true;
 				onValueChange();
 			});
 
-		const self = this;
+		const { googleTiles, swisstopoTerrainTiles, swisstopoBuildingsTiles } = this;
 		const stats = {
 			get googleTilesCachedMB() {
-				return ((self.googleTiles.lruCache as any).cachedBytes / 1000000).toFixed(3); // display in MB
+				return ((googleTiles.lruCache as any).cachedBytes / 1000000).toFixed(3); // display in MB
 			},
 			get swisstopoTerrainTilesCachedMB() {
-				return ((self.swisstopoTerrainTiles.lruCache as any).cachedBytes / 1000000).toFixed(3); // display in MB
+				return ((swisstopoTerrainTiles.lruCache as any).cachedBytes / 1000000).toFixed(3); // display in MB
 			},
 			get swisstopoBuildingsTilesCachedMB() {
-				return ((self.swisstopoBuildingsTiles.lruCache as any).cachedBytes / 1000000).toFixed(3); // display in MB
+				return ((swisstopoBuildingsTiles.lruCache as any).cachedBytes / 1000000).toFixed(3); // display in MB
 			},
 		};
 		debugGui.add(stats, 'googleTilesCachedMB').listen().disable();
@@ -584,7 +584,7 @@ export class TilesManagerService {
 
 		this.sceneManager.earth.add(target.group);
 
-		target.addEventListener('load-tileset', (_o: { tileSet?: Object }) => {
+		target.addEventListener('load-tileset', () => {
 			target.group.position.copy(SWISS_GEOID_ELLIPSOID_OFFSET);
 		});
 		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {

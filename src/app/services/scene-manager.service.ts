@@ -14,8 +14,6 @@ import { EffectComposer, EffectMaterial, RenderPass } from 'postprocessing';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
 import GUI from 'three/examples/jsm/libs/lil-gui.module.min.js';
 
-const REUSABLE_VECTOR3 = new Vector3();
-
 @Injectable({ providedIn: 'root' })
 export class SceneManagerService {
 	renderer!: WebGLRenderer;
@@ -30,6 +28,8 @@ export class SceneManagerService {
 	isMouseDragging = false; // Meaning that mouse is being dragged with either left or right button.
 	areControlsDragging = false; // Meaning that user is moving globe with normal left mouse button.
 	isControlsRotationReset = true; // Meaning that north is up and lookAt Earth center.
+
+	private readonly REUSABLE_VECTOR3 = new Vector3();
 
 	private onControlsStartCallback?: () => void;
 
@@ -96,8 +96,8 @@ export class SceneManagerService {
 			this.areControlsDragging = false;
 		});
 
-		this.earth.rotateOnWorldAxis(REUSABLE_VECTOR3.set(1, 0, 0), -Math.PI / 2);
-		this.earth.rotateOnWorldAxis(REUSABLE_VECTOR3.set(0, 1, 0), -Math.PI / 2);
+		this.earth.rotateOnWorldAxis(this.REUSABLE_VECTOR3.set(1, 0, 0), -Math.PI / 2);
+		this.earth.rotateOnWorldAxis(this.REUSABLE_VECTOR3.set(0, 1, 0), -Math.PI / 2);
 		this.scene.add(this.earth);
 
 		this.stats.showPanel(0);
