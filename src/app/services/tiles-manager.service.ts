@@ -54,6 +54,11 @@ import {
 import { RbdService } from './rbd.service';
 import { buildBuildingName, HighlightedBuildingInfo } from '../viewer/building-info.presenter';
 
+const NAMES_OVERLAY_ORDER = 100;
+const BASE_OVERLAY_ORDER = 0;
+const ADDITIONAL_OVERLAY_ORDER = 20;
+const SNOW_OVERLAY_ORDER = 5;
+
 @Injectable({ providedIn: 'root' })
 export class TilesManagerService {
 	swisstopoWMTSCapabilities = signal<WMTSCapabilitiesResult | null>(null);
@@ -220,8 +225,8 @@ export class TilesManagerService {
 
 		if ($event.adminOverlay?.enabled === true) {
 			this.swisstopoNamesTiles.group.visible = true;
-			this.googleTilesOverlayPlugin?.addOverlay(this.namesOverlay);
-			this.swisstopoTerrainOverlayPlugin?.addOverlay(this.namesOverlay);
+			this.googleTilesOverlayPlugin?.addOverlay(this.namesOverlay, NAMES_OVERLAY_ORDER);
+			this.swisstopoTerrainOverlayPlugin?.addOverlay(this.namesOverlay, NAMES_OVERLAY_ORDER);
 		} else if ($event.adminOverlay?.enabled === false) {
 			this.swisstopoNamesTiles.group.visible = false;
 			this.googleTilesOverlayPlugin?.deleteOverlay(this.namesOverlay);
@@ -258,7 +263,7 @@ export class TilesManagerService {
 					this.swisstopoBaseOverlay,
 					newBaseOverlay,
 					newBaseOverlayKey,
-					0,
+					BASE_OVERLAY_ORDER,
 					true
 				) as never; // TODO: Remove all these "never" casts once SnowImageOverlay properly extends from ImageOverlay.
 			}
@@ -272,7 +277,12 @@ export class TilesManagerService {
 
 			if (this.additionalOverlay?.key !== newKey) {
 				// Avoid deleting/recreating overlay when only opacity changes.
-				this.additionalOverlay = this.swapOverlay(this.additionalOverlay, this.snowOverlay, newKey, 10);
+				this.additionalOverlay = this.swapOverlay(
+					this.additionalOverlay,
+					this.snowOverlay,
+					newKey,
+					SNOW_OVERLAY_ORDER
+				);
 			}
 		} else if (isWmts) {
 			const timeDimension =
@@ -301,7 +311,12 @@ export class TilesManagerService {
 					opacity: additionalOverlayOpacity,
 				});
 
-				this.additionalOverlay = this.swapOverlay(this.additionalOverlay, newAdditionalOverlay, newKey, 10);
+				this.additionalOverlay = this.swapOverlay(
+					this.additionalOverlay,
+					newAdditionalOverlay,
+					newKey,
+					ADDITIONAL_OVERLAY_ORDER
+				);
 			}
 		} else if (this.additionalOverlay) {
 			this.swisstopoTerrainOverlayPlugin?.deleteOverlay(this.additionalOverlay.overlay as never);
@@ -386,7 +401,7 @@ export class TilesManagerService {
 
 			// Force the ImageOverlayPlugin to re-render the snow overlay (e.g. after bounds change).
 			this.swisstopoTerrainOverlayPlugin?.deleteOverlay(this.snowOverlay as never);
-			this.swisstopoTerrainOverlayPlugin?.addOverlay(this.snowOverlay as never, 10);
+			this.swisstopoTerrainOverlayPlugin?.addOverlay(this.snowOverlay as never, SNOW_OVERLAY_ORDER);
 
 			onValueChange();
 		};
