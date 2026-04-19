@@ -234,20 +234,24 @@ export class TilesManagerService {
 				$event.swisstopoBaseOverlay.timeDimension === referenceDate.getFullYear().toString()
 					? 'current'
 					: $event.swisstopoBaseOverlay.timeDimension; // Use "current" overlay if current year is selected. // TODO: Check if year dimension indeed exists in capabilities and if not, default to "current".
-			const layer =
+			const layerId =
 				timeDimension === 'current' && $event.swisstopoBaseOverlay.layer === 'ch.swisstopo.swissimage-product'
 					? 'ch.swisstopo.swissimage'
 					: $event.swisstopoBaseOverlay.layer;
-			const newBaseOverlayKey = `${layer}:${timeDimension}`;
+			const newBaseOverlayKey = `${layerId}:${timeDimension}`;
 
 			if (!this.swisstopoBaseOverlay || this.swisstopoBaseOverlay.key !== newBaseOverlayKey) {
+				const layer = this.swisstopoWMTSCapabilities()!.layers.find(l => l.identifier === layerId)!;
+				const tileMatrixSet = layer.tileMatrixSets.find(tms => tms.identifier === '3857_20')!;
 				const newBaseOverlay = new WMTSTilesOverlay({
-					capabilities: this.swisstopoWMTSCapabilities(),
-					layer,
+					url: layer.resourceUrls[0].template,
+					layer: layerId,
+					tileMatrices: tileMatrixSet.tileMatrices,
 					style: 'default',
 					dimensions: { Time: timeDimension },
 					color: 0xffffff,
 					opacity: 1,
+					contentBoundingBox: layer.boundingBox.bounds,
 				});
 
 				this.swisstopoBaseOverlay = this.swapOverlay(
@@ -283,9 +287,14 @@ export class TilesManagerService {
 				// Avoid deleting/recreating overlay when only opacity changes.
 				this.additionalOverlay.overlay.opacity = additionalOverlayOpacity;
 			} else {
+				const layer = this.swisstopoWMTSCapabilities()!.layers.find(
+					l => l.identifier === $event.swisstopoAdditionalOverlay!.layer
+				)!;
+				const tileMatrixSet = layer.tileMatrixSets.find(tms => tms.identifier === '3857_20')!;
 				const newAdditionalOverlay = new WMTSTilesOverlay({
-					capabilities: this.swisstopoWMTSCapabilities(),
-					layer: $event.swisstopoAdditionalOverlay!.layer,
+					url: layer.resourceUrls[0].template,
+					tileMatrices: tileMatrixSet.tileMatrices,
+					layer: layer.identifier,
 					style: 'default',
 					dimensions: { Time: timeDimension },
 					color: 0xffffff,
