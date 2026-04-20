@@ -75,6 +75,7 @@ export const HEIGHT_FULL_GLOBE_VISIBLE = 7000000;
 export const HEIGHT_ABOVE_TARGET_COORDS_ELEVATION = 1000; // [m]
 export const TOLERANCE_DISTANCE_COORDS_NO_WAIT_TO_DESCENT = 500000; // [m]
 export const SWITZERLAND_REGION_CAMERA_ELEVATION_THRESHOLD = 350000; // [m]
+export const BLACK_MARBLE_CAMERA_ELEVATION_THRESHOLD = SWITZERLAND_REGION_CAMERA_ELEVATION_THRESHOLD; // [m]
 export const SWISS_GEOID_ELLIPSOID_OFFSET = new Vector3(34, 5, 36); // We empirically find the approximate offset with Google Photorealistic 3D Tiles at Gare de Vevey to have them more or less aligned. Read more here https://www.swisstopo.admin.ch/fr/geoid-fr and https://bertt.wordpress.com/2023/07/11/adding-objects-to-google-photorealistic-3d-tiles/
 
 export const ZOOM_LEVEL_COLORS_DEBUG = [

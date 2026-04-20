@@ -32,6 +32,7 @@ import { OutsideSwitzerlandRegion } from '../utils/OutsideSwitzerlandRegion';
 import { SnowImageOverlay } from '../utils/snow-image-overlay';
 import GUI from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import {
+	BLACK_MARBLE_CAMERA_ELEVATION_THRESHOLD,
 	DEFAULT_ADDITIONAL_LAYER_OPACITY,
 	ENABLE_DEBUG_PLUGIN,
 	GIGABYTE_BYTES,
@@ -52,6 +53,7 @@ import {
 } from '../config/tiles.config';
 import { RbdService } from './rbd.service';
 import { buildBuildingName, HighlightedBuildingInfo } from '../viewer/building-info.presenter';
+import { AltitudeRegion } from '../utils/AltitudeRegion';
 
 const NAMES_OVERLAY_ORDER = 100;
 const BASE_OVERLAY_ORDER = 0;
@@ -747,6 +749,11 @@ export class TilesManagerService {
 		);
 		target.registerPlugin(new UnloadTilesPlugin());
 		target.registerPlugin(new TilesFadePlugin());
+
+		// Only display black marble at high altitude.
+		const regionsPlugin = new LoadRegionPlugin();
+		target.registerPlugin(regionsPlugin);
+		regionsPlugin.addRegion(new AltitudeRegion(BLACK_MARBLE_CAMERA_ELEVATION_THRESHOLD));
 
 		target.setCamera(this.sceneManager.camera);
 		target.setResolutionFromRenderer(this.sceneManager.camera, this.sceneManager.renderer);
