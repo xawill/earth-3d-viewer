@@ -31,7 +31,13 @@ export class SceneManagerService {
 
 	private readonly REUSABLE_VECTOR3 = new Vector3();
 
+	private worldFramesToUpdate = 0; // See `worldNeedsUpdate`
 	private onControlsStartCallback?: () => void;
+
+	set worldNeedsUpdate(value: boolean) {
+		// For some reason, tiles need to be updated on 2 frames. Maybe because of a plugin such as TilesFadePlugin.
+		this.worldFramesToUpdate = 2;
+	}
 
 	init(canvas: HTMLCanvasElement): void {
 		this.renderer = new WebGLRenderer({
@@ -74,7 +80,7 @@ export class SceneManagerService {
 			this.renderingNeedsUpdate = true;
 		});
 		this.controls.addEventListener('end', () => {
-			this.renderingNeedsUpdate = true;
+			this.renderingNeedsUpdate = this.worldNeedsUpdate = true;
 		});
 
 		this.renderer.domElement.addEventListener('pointerdown', event => {
@@ -121,15 +127,19 @@ export class SceneManagerService {
 			requestAnimationFrame((_timestamp: DOMHighResTimeStamp) => renderLoop());
 			this.stats.update();
 
-			if (this.renderingNeedsUpdate) {
-				// TODO: Have a way to prevent updating tilesets during big position changes like after entering a new location in the search bar (at least at the beginning of the animation). This probably triggers a lot of useless tiles loading.
+			if (this.renderingNeedsUpdate || this.worldFramesToUpdate > 0) {
 				//console.log('RENDERING');
-				this.renderingNeedsUpdate = false;
 
 				this.controls.update();
 				this.camera.updateMatrixWorld();
 
-				onUpdate();
+				if (this.worldFramesToUpdate > 0) {
+					//console.log('UDPATING TILES');
+
+					onUpdate();
+
+					this.worldFramesToUpdate--;
+				}
 
 				this.composer.passes.forEach(pass => {
 					// Update effect materials with current camera settings
@@ -139,6 +149,8 @@ export class SceneManagerService {
 				});
 
 				this.composer.render();
+
+				this.renderingNeedsUpdate = false;
 			}
 		};
 		renderLoop();

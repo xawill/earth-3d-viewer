@@ -16,7 +16,6 @@ import {
 	WMTSCapabilitiesLoader,
 	WMTSCapabilitiesResult,
 	XYZTilesPlugin,
-	UpdateOnChangePlugin,
 } from '3d-tiles-renderer/plugins';
 import { Mesh, MeshStandardMaterial, Object3D, Raycaster } from 'three';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
@@ -345,7 +344,7 @@ export class TilesManagerService {
 			this.additionalOverlay = null;
 		}
 
-		this.sceneManager.renderingNeedsUpdate = true;
+		this.sceneManager.worldNeedsUpdate = true;
 	}
 
 	getEllipsoid(): Ellipsoid {
@@ -524,7 +523,6 @@ export class TilesManagerService {
 		);
 		target.registerPlugin(new TileCompressionPlugin()); // TODO: Needed?
 		target.registerPlugin(new UnloadTilesPlugin());
-		target.registerPlugin(new UpdateOnChangePlugin());
 		target.registerPlugin(new TilesFadePlugin());
 		target.registerPlugin(
 			new GLTFExtensionsPlugin({
@@ -576,10 +574,10 @@ export class TilesManagerService {
 			}
 		});
 		target.addEventListener('needs-render', () => {
-			this.sceneManager.renderingNeedsUpdate = true;
+			this.sceneManager.worldNeedsUpdate = true;
 		});
 		target.addEventListener('needs-update', () => {
-			this.sceneManager.renderingNeedsUpdate = true;
+			this.sceneManager.worldNeedsUpdate = true;
 		});
 		target.addEventListener('fade-change', () => {
 			this.sceneManager.renderingNeedsUpdate = true;
@@ -618,7 +616,6 @@ export class TilesManagerService {
 			})
 		);
 		target.registerPlugin(new UnloadTilesPlugin());
-		target.registerPlugin(new UpdateOnChangePlugin());
 		target.registerPlugin(new TilesFadePlugin()); // TODO: Doesn't seem to have any noticeable impact
 		if (overlayPlugin) {
 			// TODO: Check how to reuse plugins between tiles sets; currently unsupported (see https://github.com/NASA-AMMOS/3DTilesRendererJS/issues/1264).
@@ -655,10 +652,10 @@ export class TilesManagerService {
 			});
 		});
 		target.addEventListener('needs-render', () => {
-			this.sceneManager.renderingNeedsUpdate = true;
+			this.sceneManager.worldNeedsUpdate = true;
 		});
 		target.addEventListener('needs-update', () => {
-			this.sceneManager.renderingNeedsUpdate = true;
+			this.sceneManager.worldNeedsUpdate = true;
 		});
 		target.addEventListener('fade-change', () => {
 			this.sceneManager.renderingNeedsUpdate = true;
@@ -683,7 +680,6 @@ export class TilesManagerService {
 
 		target.registerPlugin(new QuantizedMeshPlugin({ useRecommendedSettings: false }));
 		target.registerPlugin(new UnloadTilesPlugin());
-		target.registerPlugin(new UpdateOnChangePlugin());
 		target.registerPlugin(new TilesFadePlugin());
 
 		const debugPlugin = new DebugTilesPlugin({
@@ -729,10 +725,10 @@ export class TilesManagerService {
 			});
 		});
 		target.addEventListener('needs-render', () => {
-			this.sceneManager.renderingNeedsUpdate = true;
+			this.sceneManager.worldNeedsUpdate = true;
 		});
 		target.addEventListener('needs-update', () => {
-			this.sceneManager.renderingNeedsUpdate = true;
+			this.sceneManager.worldNeedsUpdate = true;
 		});
 		target.addEventListener('fade-change', () => {
 			this.sceneManager.renderingNeedsUpdate = true;
@@ -750,7 +746,6 @@ export class TilesManagerService {
 			})
 		);
 		target.registerPlugin(new UnloadTilesPlugin());
-		target.registerPlugin(new UpdateOnChangePlugin());
 		target.registerPlugin(new TilesFadePlugin());
 
 		target.setCamera(this.sceneManager.camera);
@@ -762,10 +757,10 @@ export class TilesManagerService {
 		this.atmosphereService.blackMarbleEffect.blackMarbleTiles = target.group;
 
 		target.addEventListener('needs-render', () => {
-			this.sceneManager.renderingNeedsUpdate = true;
+			this.sceneManager.worldNeedsUpdate = true;
 		});
 		target.addEventListener('needs-update', () => {
-			this.sceneManager.renderingNeedsUpdate = true;
+			this.sceneManager.worldNeedsUpdate = true;
 		});
 		target.addEventListener('fade-change', () => {
 			this.sceneManager.renderingNeedsUpdate = true;

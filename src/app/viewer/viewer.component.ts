@@ -62,7 +62,9 @@ export class ViewerComponent implements AfterViewInit {
 	async ngAfterViewInit() {
 		const debugGui = new GUI({ width: 300 });
 		debugGui.hide();
-		const onDebugValueChange = () => (this.sceneManager.renderingNeedsUpdate = true);
+		const onDebugValueChange = () => {
+			this.sceneManager.renderingNeedsUpdate = this.sceneManager.worldNeedsUpdate = true;
+		};
 
 		this.sceneManager.init(this.canvas.nativeElement);
 		this.sceneManager.registerDebugControls(debugGui, onDebugValueChange);
@@ -125,7 +127,7 @@ export class ViewerComponent implements AfterViewInit {
 			const hour = Math.floor($event.totalMinutes / 60);
 			const minute = $event.totalMinutes % 60;
 			this.referenceDate.setHours(hour, minute, 0, 0);
-			this.sceneManager.renderingNeedsUpdate = true;
+			this.sceneManager.renderingNeedsUpdate = this.sceneManager.worldNeedsUpdate = true;
 		}
 	}
 

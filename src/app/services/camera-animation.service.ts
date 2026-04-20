@@ -256,6 +256,7 @@ export class CameraAnimationService {
 				.eventCallback('onComplete', () => {
 					onComplete?.();
 					this.sceneManager.isControlsRotationReset = true;
+					this.sceneManager.worldNeedsUpdate = true;
 				});
 		};
 		this.zoomToCoordsAnimationTl = gsap.timeline();
