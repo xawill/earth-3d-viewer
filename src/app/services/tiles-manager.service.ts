@@ -86,7 +86,6 @@ export class TilesManagerService {
 	private snowOverlay = new SnowImageOverlay({ opacity: DEFAULT_ADDITIONAL_LAYER_OPACITY });
 	private googleTilesOverlayPlugin!: ImageOverlayPlugin;
 	private swisstopoTerrainOverlayPlugin!: ImageOverlayPlugin;
-	private swisstopo3DObjectOverlayPlugin!: ImageOverlayPlugin;
 
 	private atmosphereService = inject(AtmosphereService);
 	private rbdService = inject(RbdService);
@@ -120,14 +119,23 @@ export class TilesManagerService {
 		this.swisstopoWMTSCapabilities.set(
 			await new WMTSCapabilitiesLoader().loadAsync(SWISSTOPO_WMTS_CAPABILITIES_URL)
 		);
+		const swissimageWmtsLayer = this.swisstopoWMTSCapabilities()!.layers.find(
+			l => l.identifier === 'ch.swisstopo.swissimage'
+		)!;
+		const closeupSwissimageOverlay = new WMTSTilesOverlay({
+			url: swissimageWmtsLayer.resourceUrls[0].template,
+			layer: swissimageWmtsLayer.identifier,
+			tileMatrices: swissimageWmtsLayer.tileMatrixSets.find(tms => tms.identifier === '3857_20')!.tileMatrices,
+			style: 'default',
+			dimensions: { Time: 'current' },
+			color: 0xffffff,
+			opacity: 1,
+			contentBoundingBox: swissimageWmtsLayer.boundingBox.bounds,
+		});
+
 		this.swisstopoTerrainOverlayPlugin = new ImageOverlayPlugin({
 			renderer: this.sceneManager.renderer,
 			enableTileSplitting: true,
-			overlays: [], // NB: swisstopoOverlay is added when selected layers init
-		});
-		this.swisstopo3DObjectOverlayPlugin = new ImageOverlayPlugin({
-			renderer: this.sceneManager.renderer,
-			enableTileSplitting: false,
 			overlays: [], // NB: swisstopoOverlay is added when selected layers init
 		});
 
@@ -135,9 +143,24 @@ export class TilesManagerService {
 			this.swisstopoBuildingsTiles,
 			40,
 			buildingTexture.createBuildingMeshCustomizationCallback(this.sceneManager.renderer),
-			true
+			new ImageOverlayPlugin({
+				renderer: this.sceneManager.renderer,
+				enableTileSplitting: false,
+				//resolution: 2048, // TODO: Cannot really improve quality here. Probably an issue with how the UVs are set by ImageOverlayPlugin.
+				overlays: [closeupSwissimageOverlay],
+			})
 		);
-		this.initSwisstopo3DTileset(this.swisstopoTlmTiles, 100, buildingTexture.createTlmMeshCustomizationCallback());
+		this.initSwisstopo3DTileset(
+			this.swisstopoTlmTiles,
+			100,
+			buildingTexture.createTlmMeshCustomizationCallback(this.sceneManager.renderer),
+			new ImageOverlayPlugin({
+				renderer: this.sceneManager.renderer,
+				enableTileSplitting: false,
+				//resolution: 2048, // TODO: Quality is really poor at default 256, but 2048 causes severe performance issues. Root cause is probably how the dataset is structured with tiles not higher than zoom level 10.
+				overlays: [closeupSwissimageOverlay],
+			})
+		);
 		this.initSwisstopo3DTileset(
 			this.swisstopoVegetationTiles,
 			8,
@@ -263,8 +286,7 @@ export class TilesManagerService {
 					this.swisstopoBaseOverlay,
 					newBaseOverlay,
 					newBaseOverlayKey,
-					BASE_OVERLAY_ORDER,
-					true
+					BASE_OVERLAY_ORDER
 				) as never; // TODO: Remove all these "never" casts once SnowImageOverlay properly extends from ImageOverlay.
 			}
 		}
@@ -568,7 +590,7 @@ export class TilesManagerService {
 		target: TilesRenderer,
 		errorTarget: number,
 		meshCustomizationCallback?: (mesh: Mesh) => void,
-		overlaySwissimage = false
+		overlayPlugin?: ImageOverlayPlugin
 	): void {
 		target.errorTarget = errorTarget;
 
@@ -598,9 +620,9 @@ export class TilesManagerService {
 		target.registerPlugin(new UnloadTilesPlugin());
 		target.registerPlugin(new UpdateOnChangePlugin());
 		target.registerPlugin(new TilesFadePlugin()); // TODO: Doesn't seem to have any noticeable impact
-		if (overlaySwissimage) {
+		if (overlayPlugin) {
 			// TODO: Check how to reuse plugins between tiles sets; currently unsupported (see https://github.com/NASA-AMMOS/3DTilesRendererJS/issues/1264).
-			target.registerPlugin(this.swisstopo3DObjectOverlayPlugin);
+			target.registerPlugin(overlayPlugin);
 		}
 
 		target.setCamera(this.sceneManager.camera);
@@ -612,6 +634,7 @@ export class TilesManagerService {
 			target.group.position.copy(SWISS_GEOID_ELLIPSOID_OFFSET);
 		});
 		target.addEventListener('load-model', (o: { scene: Object3D; tile: Tile }) => {
+			// TODO: Match fails with splitted tiles, as they don't have the original tile URI with coordinates.
 			const [, tileZoomLevel, tileIndexX, tileIndexY] = o.tile.content!.uri.match(/(\d+)\/(\d+)\/(\d+)\./)!;
 			const tileOffset = // Produce pseudo-random but deterministic integer per tile from its coordinates
 				(parseInt(tileIndexX) * LARGE_PRIME_1) ^
@@ -753,8 +776,7 @@ export class TilesManagerService {
 		currentOverlay: { overlay: WMTSTilesOverlay | SnowImageOverlay; key: string } | null,
 		newOverlay: WMTSTilesOverlay | SnowImageOverlay,
 		newOverlayKey: string,
-		overlayOrder = 0,
-		addTo3DObjectPlugin = false
+		overlayOrder = 0
 	): { overlay: WMTSTilesOverlay | SnowImageOverlay; key: string } {
 		this.swisstopoTerrainOverlayPlugin?.addOverlay(newOverlay as never, overlayOrder);
 
@@ -767,10 +789,6 @@ export class TilesManagerService {
 				// TODO: Dispose?
 			};
 			this.swisstopoTerrainTiles.addEventListener('needs-update', cleanupOldOverlay);
-		}
-
-		if (addTo3DObjectPlugin && !currentOverlay) {
-			this.swisstopo3DObjectOverlayPlugin?.addOverlay(newOverlay as never);
 		}
 
 		return { overlay: newOverlay as never, key: newOverlayKey };

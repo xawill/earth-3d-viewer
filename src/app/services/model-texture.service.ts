@@ -48,10 +48,6 @@ const TREE_TRUNK_MATERIAL = TEXTURE_LOADER.loadAsync('assets/tree-trunk.jpg').th
 	});
 });
 
-const SWISSTOPO_TLM_MATERIAL = new MeshBasicMaterial({
-	color: 0xb9b0aa,
-});
-
 @Injectable({ providedIn: 'root' })
 export class ModelTextureService {
 	private readonly REUSABLE_VECTOR3_1 = new Vector3();
@@ -218,23 +214,9 @@ export class ModelTextureService {
 		};
 	}
 
-	createTlmMeshCustomizationCallback(): (mesh: Mesh) => void {
+	createTlmMeshCustomizationCallback(renderer: WebGLRenderer): (mesh: Mesh) => void {
 		return (mesh: Mesh) => {
-			// Having all objects share the same material. Also making sure that the material is unlit for proper rendering with atmosphere support.
-			// TODO: In the original dataset, different colors are applied to different structures. Let's try to find a way to recover them while still reusing the different materials.
-			// TODO: Even better: texture with SWISSIMAGE (once performance issues are solved).
-			const originalMaterial = mesh.material as MeshStandardMaterial;
-
-			// Properly dispose of original material.
-			if (originalMaterial) {
-				if (Array.isArray(originalMaterial)) {
-					originalMaterial.forEach(mat => disposeMaterial(mat));
-				} else {
-					disposeMaterial(originalMaterial);
-				}
-			}
-
-			mesh.material = SWISSTOPO_TLM_MATERIAL;
+			removeLightingFromMaterial(mesh.material as MeshStandardMaterial, renderer);
 		};
 	}
 
