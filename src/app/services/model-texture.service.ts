@@ -226,7 +226,7 @@ export class ModelTextureService {
 			// TODO: Properly implement InstancedMesh, as there are clearly too many trees objects in the scene (is InstancedMesh really used!?). o.scene has two children (foliage + trunk).
 
 			const originalMaterial = mesh.material as MeshStandardMaterial;
-			const textureWidth = originalMaterial.map?.source.data.width;
+			const textureWidth = (originalMaterial.map?.source.data as ImageBitmap).width;
 
 			// Properly dispose of original material.
 			if (originalMaterial) {

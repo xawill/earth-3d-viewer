@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { Loader } from '@googlemaps/js-api-loader';
+import { importLibrary, setOptions } from '@googlemaps/js-api-loader';
 import { environment } from '../../environments/environment';
 import { LatLng } from '../utils/map-utils';
 
@@ -12,14 +12,14 @@ export class GoogleMapsService {
 	private googleElevationService: Promise<google.maps.ElevationService>;
 
 	constructor() {
-		const loader = new Loader({
-			apiKey: environment.GOOGLE_MAPS_JAVASCRIPT_API_KEY,
-			version: 'weekly',
+		setOptions({
+			key: environment.GOOGLE_MAPS_JAVASCRIPT_API_KEY,
+			v: 'weekly',
 			libraries: ['places', 'geocoding'],
 		});
-		this.googlePlacesService = loader.importLibrary('places');
-		this.googleGeocoder = loader.importLibrary('geocoding').then(lib => new lib.Geocoder());
-		this.googleElevationService = loader.importLibrary('elevation').then(lib => new lib.ElevationService());
+		this.googlePlacesService = importLibrary('places');
+		this.googleGeocoder = importLibrary('geocoding').then(lib => new lib.Geocoder());
+		this.googleElevationService = importLibrary('elevation').then(lib => new lib.ElevationService());
 	}
 
 	async findCoordsForAddress(address: string): Promise<google.maps.GeocoderResponse> {
